@@ -16,3 +16,6 @@ The **.onc** format (octree encrypted code) is the file format of choice for thi
 
 ## Visualisation
 Integrated with the package <del>is</del> :trollface: will be a handy-dandy pyGame-based octree visualiser, that utilises state-of-the-art rect() calls.
+
+## And now for something completely different
+![**no one expects the spanish inquisition**](https://static.wikia.nocookie.net/montypython/images/f/ff/Spanish_Inquisition.jpg/revision/latest?cb=20180629171423)
