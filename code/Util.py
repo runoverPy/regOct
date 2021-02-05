@@ -19,6 +19,9 @@ class InvalidRequestCallError(Exception):
     def __str__(self):
         return f'{self.called_by} {self.message}: {self.request}'
 
+class AttributeDesynchronisationError(Exception):
+    def __init__(self):
+        self.message = "File data incompatible with given attribute layout"
 
 class Geometry():
     @staticmethod
