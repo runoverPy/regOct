@@ -4,12 +4,13 @@ class RegOctLoader:
     def __init__(self, target, file_name):
         self.target = target
         self.commands = [
-            {"/":"create_branch", "@":"fill_branch", "#":"close_branch"},
+            {"/":"create_branch", "&":"fill_branch", "#":"close_branch"},
             {';'},
-            {'"':"load_str", "'":"load_int", "*":"set_iterations", ";":"push_command"}]
+            {'"':"load_str", "'":"load_int", "*":"set_iterations", ";":"push_command", "@":"set_vartag"}]
 
         self.processes = ["assign_command", "assign_modifier", "assign_parameter"]
-        self.state = [0, "", "", [], 0, 1]          # process, current_command, current_mod, out_list, out_list_index, iterations
+        self.state = [0, "", "", {}, "", 1]          # process, current_command, current_mod, out_dict, current_vartag, iterations
+
 
         with open(file_name, "r") as data_file:
             all_data = data_file.read()
@@ -32,22 +33,26 @@ class RegOctLoader:
     def assign_parameter(self, args):
         getattr(self, self.state[2])(args)
 
-    def load_str(self, args):
+    def load_char(self, args):
         self.state[0] = 1
-        self.state[3].append(str(args))
+        self.state[3][self.state[4]] = args
 
     def load_int(self, args):
         self.state[0] = 1
-        self.state[3].append(int(args))
+        self.state[3][self.state[4]] = int(args)
 
     def set_iterations(self, args):
         self.state[0] = 1
         self.state[5] = int(args)
 
+    def set_vartag(self, args):
+        self.state[0] = 1
+        self.state[4] = str(hex(int(args)))
+
     def push_command(self, args):
         for i in range(self.state[5]):
-            getattr(self.target, self.state[1])(self.state[3])
-        self.state = [0, "", "", [], 0, 1] 
+            print(self.state[1], self.state[3])
+        self.state = [0, "", "", {}, "", 1]
 
 if __name__ == "__main__":
-    RegOctLoader(None, "test.onc")
+    RegOctLoader(None, "tests/test.onc")
