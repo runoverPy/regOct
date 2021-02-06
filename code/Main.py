@@ -81,3 +81,15 @@ class Box:
                 return vars(self)[request]
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)
+
+def correlate(setup, data):
+    for attr in setup.items():
+        try:
+            print(f'{attr[0]} = {data[attr[1]]}')
+        except KeyError:
+            raise UnboundVartagError(attr[1], data)
+
+if __name__ == "__main__":
+    setup = {"python_is_awesome":"0x0", "trollfaces":"0x1", "spanish_inquisition":"0x2", "intentionally_missing":"0x3"}
+    data = {"0x0":True, "0x2":"unexpected", "0x1":1}
+    correlate(setup, data)

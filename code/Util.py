@@ -22,6 +22,12 @@ class InvalidRequestCallError(Exception):
 class AttributeDesynchronisationError(Exception):
     def __init__(self):
         self.message = "File data incompatible with given attribute layout"
+        super().__init__(self.message)
+
+class UnboundVartagError(Exception):
+    def __init__(self, vartag, data):
+        self.message = f"Vartag {vartag} not found in data {data.keys()}"
+        super().__init__(self.message)
 
 class Geometry():
     @staticmethod
