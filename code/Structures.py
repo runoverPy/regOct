@@ -30,6 +30,7 @@ class Leaf(UnifiedFormat):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos):
             next_coords = Geometry.coord_mod(coords, 2**self.level)
             try:
+                print(coords, self.coords, vars(self)[request])
                 return vars(self)[request]
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)
@@ -91,6 +92,7 @@ class RegOct():
             return self.octree.get(coords, request)
         else:
             try:
+                print(coords, vars(self)[request], "ook! ook? ook? ook!")
                 return vars(self)[request]
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)
@@ -114,7 +116,6 @@ class RegOct():
                     op_fl.write("\n")
                 op_fl.write("\n")
 
-
 def correlate(setup, data):
     for attr in setup.items():
         try:
@@ -125,3 +126,7 @@ def correlate(setup, data):
 if __name__ == "__main__":
     octree = RegOct.direct(2, "tests/test.onc")
     octree.print_to_bitmap("tests/test_bitmap.pbm")
+    for i in range(4):
+        for j in range(4):
+            for k in range(4):
+                octree.get([i, j, k], "level")
