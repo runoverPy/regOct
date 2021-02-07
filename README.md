@@ -33,16 +33,6 @@ Example:
 python_is_awesome = True
 trollfaces = 1
 spanish_inquisition = unexpected
->>> setup = {"python_is_awesome":"0x0", "trollfaces":"0x1", "spanish_inquisition":"0x2"}
->>> data = {"0x0":True, "0x2":"unexpected", "0x1":1}
->>> correlate(setup, data)
-```
-creates the attribute constellation:
-``` python 
-def method(*args):
-    python_is_awesome = True
-    trollfaces = 1
-    spanish_inquisition = "unexpected"
 ```
 
 ### Implicit Attributes WIP
