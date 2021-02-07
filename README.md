@@ -15,10 +15,10 @@ The **.onc** format (octree encrypted code) is the file format of choice for thi
 2. All theoretical points in regOct are equidistant. If, for whatever reason, complex 3d data must be stored, then that must be done so as an attribute. This is because the highly ordered nature of the format allows for high-speed get()-calls (the get() code is ridiculously short).
 
 ## Visualisation WIP
-Integrated with the package will be a handy-dandy pyGame-based octree visualiser, that utilises state-of-the-art rect() calls :trollface:.
+Integrated with the package will be a handy-dandy pyGame-based octree visualiser, but for the time being I've added a print_to_bitmap method, that does exactly what it says.
+It isn't as cool as haveing a window displaying it, but oh well.
 
 ## Implementation specifics
-
 ### VARTAGS
 TL;DR:
 Vartags are how the interpreter knows what data goes where. They must be defined in a dict when loading a regOct.
@@ -42,6 +42,8 @@ Implicit Attributes aggregate values from the branches underneath them. They sho
 As the name implies, these attributes are not determined by what is directly read from the file, but rather what its subjects' values are.
 Therefore, there should only be three possible states per implicit attribute: True, False, Both/Inconclusive. It is recommended that these values be Enums.
 Unlike Explicit Attributes, these are not restricted to leaves, and are optional. After the octree is completed, it recursively checks all branches and updates their implicit attributes. 
+Currently, implicit attributes are WIP.
+
 
 ## And now for something completely different
 ![**no one expects the spanish inquisition**](https://static.wikia.nocookie.net/montypython/images/f/ff/Spanish_Inquisition.jpg/revision/latest?cb=20180629171423)
