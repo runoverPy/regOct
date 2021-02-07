@@ -6,7 +6,7 @@ class RegOctLoader:
         self.commands = [
             {"/":"create_branch", "&":"fill_branch", "#":"close_branch"},
             {';'},
-            {'"':"load_str", "'":"load_int", "*":"set_iterations", ";":"push_command", "@":"set_vartag"}]
+            {'"':"load_char", "'":"load_int", "*":"set_iterations", ";":"push_command", "@":"set_vartag"}]
 
         self.processes = ["assign_command", "assign_modifier", "assign_parameter"]
         self.state = [0, "", "", {}, "", 1]          # process, current_command, current_mod, out_dict, current_vartag, iterations
@@ -51,8 +51,8 @@ class RegOctLoader:
 
     def push_command(self, args):
         for i in range(self.state[5]):
-            print(self.state[1], self.state[3])
+            getattr(self.target, self.state[1])(self.state[3])
         self.state = [0, "", "", {}, "", 1]
 
 if __name__ == "__main__":
-    RegOctLoader(None, "tests/test.onc")
+    RegOctLoader(None, "tests/test2.onc")

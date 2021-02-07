@@ -5,52 +5,60 @@ from Parser import RegOctLoader as rol
 from abc import ABC, abstractmethod
 
 class UnifiedFormat(ABC):
-    def __init__(self, coords, level, pos, master):
+    def __init__(self, coords, level, pos, master, setup):
+        if setup == None:
+            self.setup = {"default":"0x0"}
+        else:
+            self.setup = setup
         self.level = level
         self.coords = Geometry.coord_addition(coords, Geometry.coords_from_index(pos, level=self.level))
         self.pos = pos
         self.master = master
         if self.level < 0:
             raise SubdivisionIndexError(self.level)
-        
-class Point(UnifiedFormat):
-    def __init__(self, material, level, coords, pos, master):
-        super().__init__(coords, level, pos, master)
+
+class Leaf(UnifiedFormat):
+    def __init__(self, level, coords, pos, master, data, setup=None):
+        super().__init__(coords, level, pos, master, setup)
+        for attr in self.setup.items():
+            try:
+                setattr(self, attr[0], data[attr[1]])
+            except KeyError:
+                raise UnboundVartagError(attr[1], data)
 
     def get(self, coords, request):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos):
             next_coords = Geometry.coord_mod(coords, 2**self.level)
             try:
-                print(coords, self.coords, vars(self)[request])
                 return vars(self)[request]
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)
         else:
             self.master.get(next_coords)
 
-class Octree(UnifiedFormat):
-    def __init__(self, level, coords, pos, master):
-        super().__init__(coords, level, pos, master)
+class Branch(UnifiedFormat):
+    def __init__(self, level, coords, pos, master, setup=None):
+        super().__init__(coords, level, pos, master, setup)
         self.contents = []
 
         self.is_create = False
         self.creating_index = 0
 
-    def create_branch(self):
+    def create_branch(self, *args):
         if self.is_create == True:
             self.contents[self.creating_index].create_branch()
         else:
-            self.contents.append(Octree(self.level -1, self.coords, self.creating_index, self))
+            self.contents.append(Branch(self.level -1, self.coords, self.creating_index, self))
             self.is_create = True
 
-    def fill_branch(self, material):
+    def fill_branch(self, data):
         if self.is_create == True:
-            self.contents[self.creating_index].fill_branch(material)
+            self.contents[self.creating_index].fill_branch(data)
         else:
-            self.contents.append(Point(material, self.level -1, self.coords, self.creating_index, self))
+            self.contents.append(Leaf(self.level -1, self.coords, self.creating_index, self, data))
             self.creating_index += 1
 
-    def close_branch(self):
+    def close_branch(self, *args):
         if self.is_create == True:
             if self.contents[self.creating_index].close_branch() == True:
                 self.creating_index += 1
@@ -66,12 +74,17 @@ class Octree(UnifiedFormat):
         else:
             return self.master.get(coords, request)
 
-class Box:
-    def __init__(self, max_level, file_name):
-        self.octree = Octree(max_level, [0, 0, 0], 0, self)
+class RegOct():
+    def __init__(self, max_level, file_name, setup=None):
+        self.octree = Branch(max_level, [0, 0, 0], 0, self)
         self.level = max_level
         self.file_name = file_name
-        rol(self.octree, self.file_name)
+
+    @classmethod
+    def direct(cls, max_level, file_name, setup=None):
+        out = cls(max_level, file_name, setup)
+        out.load()
+        return out
 
     def get(self, coords, request):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.octree.pos) and Geometry.coord_compare_less(coords, 0):
@@ -82,6 +95,26 @@ class Box:
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)
 
+    def load(self):
+        rol(self.octree, self.file_name)
+
+    def print_to_bitmap(self, file_name):
+        with open(file_name, "w") as op_fl:
+            length = 2**octree.level
+            op_fl.writelines(["P1\n", f'{length} {length**2}\n'])
+            coords = [0, 0, 0]
+            for i in range(length):
+                coords[0] = i
+                for j in range(length):
+                    coords[1] = j
+                    for k in range(length):
+                        coords[2] = k
+                        print(f'   --->   {coords}')
+                        op_fl.write(f'{str(self.octree.get(coords, "default"))} ')
+                    op_fl.write("\n")
+                op_fl.write("\n")
+
+
 def correlate(setup, data):
     for attr in setup.items():
         try:
@@ -90,6 +123,5 @@ def correlate(setup, data):
             raise UnboundVartagError(attr[1], data)
 
 if __name__ == "__main__":
-    setup = {"python_is_awesome":"0x0", "trollfaces":"0x1", "spanish_inquisition":"0x2", "intentionally_missing":"0x3"}
-    data = {"0x0":True, "0x2":"unexpected", "0x1":1}
-    correlate(setup, data)
+    octree = RegOct.direct(2, "tests/test.onc")
+    octree.print_to_bitmap("tests/test_bitmap.pbm")
