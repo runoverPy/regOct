@@ -11,11 +11,18 @@ an implementation of an ordered octree system
 The **.onc** format (octree encrypted code) is the file format of choice for this code. In its current state (**v. 0.2.0**) data is stored as standard text and, as such, can be read, understood and written by regular mortals. 
 
 ### Important Notice:
+
 1. As regOct, and its data format, store raw values (currently strings), it is a highly abstracted data format. What the values represent is entirely dependant on the software interpreting it, so caution must be applied when loading a file. This also means that a program can have two seperate and unique regOct instances, where the same values are used differently. This problem is partially solved through use of Vartags.
 2. All theoretical points in regOct are equidistant. If, for whatever reason, complex 3d data must be stored, then that must be done so as an attribute. This is because the highly ordered nature of the format allows for high-speed get()-calls (the get() code is ridiculously short).
 
 ## Visualisation WIP
 Integrated with the package will be a handy-dandy pyGame-based octree visualiser, that utilises state-of-the-art rect() calls :trollface:.
+
+1. As regOct, and its data format, store raw values (currently strings), it is a highly abstracted data format. What the values represent is entirely dependant on the software interpreting it, so caution must be applied when loading a file. This also means that a program can have two seperate and unique regOct instances, where the same values are used differently. As such, a regOct instance **MUST** be bound to an enum.
+2. All theoretical points in regOct are equidistant. If, for whatever reason, complex 3d data must be stored, then that must be done so as an attribute. This is because the highly ordered nature of the format allows for high-speed get()-calls (the get() code is ridiculously short).
+
+## Visualisation WIP
+Integrated with the package <del>is</del> :trollface: will be a handy-dandy pyGame-based octree visualiser, that utilises state-of-the-art rect() calls.
 
 ## Implementation specifics
 
@@ -33,6 +40,16 @@ Example:
 python_is_awesome = True
 trollfaces = 1
 spanish_inquisition = unexpected
+>>> setup = {"python_is_awesome":"0x0", "trollfaces":"0x1", "spanish_inquisition":"0x2"}
+>>> data = {"0x0":True, "0x2":"unexpected", "0x1":1}
+>>> correlate(setup, data)
+```
+creates the attribute constellation:
+``` python 
+def method(*args):
+    python_is_awesome = True
+    trollfaces = 1
+    spanish_inquisition = "unexpected"
 ```
 
 ### Implicit Attributes WIP
