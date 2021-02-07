@@ -15,8 +15,7 @@ The **.onc** format (octree encrypted code) is the file format of choice for thi
 2. All theoretical points in regOct are equidistant. If, for whatever reason, complex 3d data must be stored, then that must be done so as an attribute. This is because the highly ordered nature of the format allows for high-speed get()-calls (the get() code is ridiculously short).
 
 ## Visualisation WIP
-Integrated with the package will be a handy-dandy pyGame-based octree visualiser, but for the time being I've added a print_to_bitmap method, that does exactly what it says.
-It isn't as cool as haveing a window displaying it, but oh well.
+Currently there is an indev version of the visualiser, and it can be created by calling Displayer() from the Visualiser file. WASD controls + arrow keys (vertical for layers, horizontal for zoom) to control the screen. In its current state, it *shouldnt* break anything, but beware of glitches.
 
 ## Implementation specifics
 ### VARTAGS
