@@ -1,7 +1,7 @@
 import math, sys
 from enum import Enum, auto
-from Util import *
-from Parser import RegOctLoader as rol
+from .Util import *
+from .Parser import RegOctLoader as rol
 from abc import ABC, abstractmethod
 
 class UnifiedFormat(ABC):
@@ -30,7 +30,6 @@ class Leaf(UnifiedFormat):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos):
             next_coords = Geometry.coord_mod(coords, 2**self.level)
             try:
-                print(coords, self.coords, vars(self)[request])
                 return vars(self)[request]
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)
@@ -92,7 +91,6 @@ class RegOct():
             return self.octree.get(coords, request)
         else:
             try:
-                print(coords, vars(self)[request], "ook! ook? ook? ook!")
                 return vars(self)[request]
             except KeyError:
                 raise InvalidRequestCallError(self.__class__.__name__, request)

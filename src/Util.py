@@ -1,5 +1,10 @@
 import glm
 
+class ToasterBathError(Exception):
+    def __init__(self):
+        self.message = "\nA terminally fatal error has ocurred during execution. \nPlease start an issue on github and submit the entire traceback.\n(paths containing compromising information should be removed)"
+        super().__init__(self.message)
+
 class SubdivisionIndexError(Exception):
     def __init__(self, value):
         self.value = value
@@ -85,3 +90,6 @@ class Geometry():
         else:
             output[pos] = abs(coord_list[pos] - 1)
         return output
+
+if __name__ == "__main__":
+    raise ToasterBathError

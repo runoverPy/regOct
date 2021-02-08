@@ -1,9 +1,9 @@
-import pygame
+from code.Structures import RegOct
 from pygame.locals import *
 from pygame.time import get_ticks
+import pygame
 import keyboard
 import glm
-from Structures import RegOct
 
 
 """
@@ -62,10 +62,12 @@ class World:
     def edge_length(self, index):
         return 2**(index-self.scope)*(700)-25
 
+    def edge_dist(self):
+        return self.edge_length(0) + 25
+
     def update(self):
         for cube in self.cubes:
-            edge_dist = 175
-            block = pygame.Rect(cube[0][1]*edge_dist, cube[0][2]*edge_dist, self.edge_length(cube[1]), self.edge_length(cube[1]))
+            block = pygame.Rect(cube[0][1]*self.edge_dist(), cube[0][2]*self.edge_dist(), self.edge_length(cube[1]), self.edge_length(cube[1]))
             pygame.draw.rect(self.screen, pygame.Color(100*cube[1], 255, 255), block)
 
 class Displayer:
@@ -88,6 +90,7 @@ if __name__ == "__main__":
     screen = main.screen
     world = World(screen, 2, octree)
     while not main.has_ended(): 
+        pygame.event.get()
         screen.fill(pygame.Color(100,100,100))
         world.change_posn()   
         world.update_data()
