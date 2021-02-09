@@ -100,7 +100,7 @@ class RegOct():
 
     def print_to_bitmap(self, file_name):
         with open(file_name, "w") as op_fl:
-            length = 2**octree.level
+            length = 2**self.octree.level
             op_fl.writelines(["P1\n", f'{length} {length**2}\n'])
             coords = [0, 0, 0]
             for i in range(length):
@@ -110,7 +110,7 @@ class RegOct():
                     for k in range(length):
                         coords[2] = k
                         print(f'   --->   {coords}')
-                        op_fl.write(f'{str(self.octree.get(coords, "default"))} ')
+                        op_fl.write(f'{str(self.octree.get(coords, "default",))} ')
                     op_fl.write("\n")
                 op_fl.write("\n")
 
@@ -121,10 +121,3 @@ def correlate(setup, data):
         except KeyError:
             raise UnboundVartagError(attr[1], data)
 
-if __name__ == "__main__":
-    octree = RegOct.direct(2, "tests/test.onc")
-    octree.print_to_bitmap("tests/test_bitmap.pbm")
-    for i in range(4):
-        for j in range(4):
-            for k in range(4):
-                octree.get([i, j, k], "level")

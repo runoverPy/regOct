@@ -1,4 +1,4 @@
-from code.Structures import RegOct
+from .Structures import RegOct
 from pygame.locals import *
 from pygame.time import get_ticks
 import pygame
@@ -84,15 +84,15 @@ class Displayer:
         else:
             return False
 
-if __name__ == "__main__":
-    octree = RegOct.direct(2, "tests/test.onc")
-    main = Displayer(octree)
-    screen = main.screen
-    world = World(screen, 2, octree)
-    while not main.has_ended(): 
-        pygame.event.get()
-        screen.fill(pygame.Color(100,100,100))
-        world.change_posn()   
-        world.update_data()
-        world.update()
-        pygame.display.update()
+    @staticmethod
+    def display(octree):
+        main = Displayer(octree)
+        screen = main.screen
+        world = World(screen, 2, octree)
+        while not main.has_ended(): 
+            pygame.event.get()
+            screen.fill(pygame.Color(100,100,100))
+            world.change_posn()   
+            world.update_data()
+            world.update()
+            pygame.display.update()
