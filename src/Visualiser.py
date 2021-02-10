@@ -1,5 +1,5 @@
 from .Structures import RegOct
-from .Parser import RegOctLoader as rol
+from .Reader import Reader
 from pygame.locals import *
 from pygame.time import get_ticks
 import pygame
@@ -36,13 +36,13 @@ class World:
                 self.scope += 1
                 self.ticks = get_ticks()
         if keyboard.is_pressed("W"):
-            self.posn[2] -= 0.05 * 2**(self.scope - 3)
+            self.posn[2] -= 0.03 * 2**(self.scope - 3)
         if keyboard.is_pressed("A"):
-            self.posn[1] -= 0.05 * 2**(self.scope - 3)
+            self.posn[1] -= 0.03 * 2**(self.scope - 3)
         if keyboard.is_pressed("S"):
-            self.posn[2] += 0.05 * 2**(self.scope - 3)
+            self.posn[2] += 0.03 * 2**(self.scope - 3)
         if keyboard.is_pressed("D"):
-            self.posn[1] += 0.05 * 2**(self.scope - 3)
+            self.posn[1] += 0.03 * 2**(self.scope - 3)
 
     def update_data(self):
         self.cubes = {}
@@ -53,7 +53,6 @@ class World:
             for j in range(length):
                 coords[2] = j
                 check_pos = (coords + self.posn).to_list()
-                print(check_pos)
                 if glm.i16vec3(coords % 2**(leaf_data := self.octree.get(check_pos, "coords", "level", "default"))["level"]) == glm.i16vec3(0) and leaf_data["coords"] != None:
                     if (coord_str := ';'.join(str(d) for d in leaf_data["coords"])) not in self.cubes:
                         leaf_data["coords"] = (glm.vec3(leaf_data["coords"]) - self.posn).to_list()

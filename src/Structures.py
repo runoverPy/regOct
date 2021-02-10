@@ -1,7 +1,7 @@
 import math, sys, time
 from enum import Enum, auto
 from .Util import *
-from .Parser import RegOctLoader as rol
+from .Reader import Reader
 from abc import ABC, abstractmethod
 import warnings
 
@@ -32,14 +32,7 @@ class UnifiedFormat(ABC):
         pass
     
     def header(self, data):
-        self.version = ""
-        for attr in header_key.items():
-            try:
-                self.version += f'{data[attr[1]]}.'
-            except KeyError:
-                pass
-                raise UnboundVartagError(attr[1], data)
-        if self.version != "0.0.1.":
+        if data["0x0"] != "0.0.2":
             warnings.warn("The ONC version of the file has been outdated.")
             if (output := input("UPDATE FILE: (y/n)\n"))[0] == "y":
                 print("its definitely updating rn")
@@ -146,7 +139,7 @@ class RegOct():
                     coords[1] = j
                     for k in range(length):
                         coords[2] = k
-                        op_fl.write(f'{str(self.octree.get(coords, "default",))} ')
+                        op_fl.write(f'{str(self.octree.get(coords, "default",)["default"])} ')
                     op_fl.write("\n")
                 op_fl.write("\n")
 
@@ -156,17 +149,18 @@ class RegOct():
         return True
 
 class Builder(Branch):
-    def __init__(self, master, ):
+    def __init__(self, master):
         self.master = master
         master.octree = self
         self.setup = master.setup
         self.file_name = master.file_name
 
     def load(self):
-        rol(self, self.file_name)
+        Reader(self, self.file_name).run()
 
     def root(self, args):
         if self.master.check_validity(args):
+            print(args[root_key["level"]], [0, 0, 0], args[root_key["pos"]], self.master)
             super().__init__(args[root_key["level"]], [0, 0, 0], args[root_key["pos"]], self.master)
         else:
             raise AttributeDesynchronisationError()

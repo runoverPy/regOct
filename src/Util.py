@@ -91,5 +91,5 @@ class Geometry():
             output[pos] = abs(coord_list[pos] - 1)
         return output
 
-header_key = {"major":"0x0", "minor":"0x1", "micro":"0x2"}
+header_key = {"major":"0x0"}
 root_key = {"level":"0x0", "pos":"0x4"}
