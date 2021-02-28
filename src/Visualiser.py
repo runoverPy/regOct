@@ -1,4 +1,5 @@
-from .Structures import RegOct
+import sys
+from .Structures import Octree
 from .Reader import Reader
 from pygame.locals import *
 from pygame.time import get_ticks
@@ -20,6 +21,7 @@ class World:
         self.heading = glm.vec3(1, 0, 0) # viewer faces positive x
         self.octree = octree
         self.ticks = get_ticks()
+        self.last_ticks = get_ticks()
 
     def change_posn(self):
         if get_ticks() - self.ticks >= 250: 
@@ -29,20 +31,22 @@ class World:
             if keyboard.is_pressed("down arrow"):
                 self.posn[0] -= 1
                 self.ticks = get_ticks()
-            if keyboard.is_pressed("left arrow"):
+            if keyboard.is_pressed("left arrow") and self.scope > 0:
                 self.scope -= 1
                 self.ticks = get_ticks()
             if keyboard.is_pressed("right arrow"):
                 self.scope += 1
                 self.ticks = get_ticks()
+        delta_time = get_ticks() - self.last_ticks
+        self.last_ticks = get_ticks()
         if keyboard.is_pressed("W"):
-            self.posn[2] -= 0.03 * 2**(self.scope - 3)
+            self.posn[2] -= 0.03 * delta_time * 2**(self.scope - 3)
         if keyboard.is_pressed("A"):
-            self.posn[1] -= 0.03 * 2**(self.scope - 3)
+            self.posn[1] -= 0.03 * delta_time * 2**(self.scope - 3)
         if keyboard.is_pressed("S"):
-            self.posn[2] += 0.03 * 2**(self.scope - 3)
+            self.posn[2] += 0.03 * delta_time * 2**(self.scope - 3)
         if keyboard.is_pressed("D"):
-            self.posn[1] += 0.03 * 2**(self.scope - 3)
+            self.posn[1] += 0.03 * delta_time * 2**(self.scope - 3)
 
     def update_data(self):
         self.cubes = {}
@@ -53,7 +57,7 @@ class World:
             for j in range(length):
                 coords[2] = j
                 check_pos = (coords + self.posn).to_list()
-                if glm.i16vec3(coords % 2**(leaf_data := self.octree.get(check_pos, "coords", "level", "default"))["level"]) == glm.i16vec3(0) and leaf_data["coords"] != None:
+                if glm.i16vec3(coords % 2**(leaf_data := self.octree.get(check_pos).return_attrs("level", "coords"))["level"]) == glm.i16vec3(0) and leaf_data["coords"] != None:
                     if (coord_str := ';'.join(str(d) for d in leaf_data["coords"])) not in self.cubes:
                         leaf_data["coords"] = (glm.vec3(leaf_data["coords"]) - self.posn).to_list()
                         self.cubes[coord_str] = leaf_data
@@ -69,7 +73,10 @@ class World:
             cube_coords = cube[1]["coords"]
             cube_level = cube[1]["level"]
             block = pygame.Rect(cube_coords[1]*self.edge_dist(), cube_coords[2]*self.edge_dist(), self.edge_length(cube_level), self.edge_length(cube_level))
-            pygame.draw.rect(self.screen, pygame.Color(255*cube[1]["default"], 255*cube[1]["default"], 255), block)
+            pygame.draw.rect(self.screen, pygame.Color(255, 255, 255), block)
+
+    def print_mouse_pos(self):
+        sys.stdout.write(f'\r{pygame.mouse.get_pos()}        ')
 
 class Displayer:
     def __init__(self, assembly):
@@ -79,10 +86,11 @@ class Displayer:
         self.screen = pygame.display.get_surface()
         self.assembly = assembly
 
-    @classmethod
-    def load_file(cls, file_name):
-        octree = RegOct
-        return cls(octree)
+    # @classmethod
+    # def load_file(cls, file_name):
+    #     """WIP"""
+    #     octree = Octree()
+    #     return cls(octree)
 
     def has_ended(self):
         if keyboard.is_pressed("escape"):
@@ -100,5 +108,6 @@ class Displayer:
             screen.fill(pygame.Color(100,100,100))
             world.change_posn()   
             world.update_data()
+            world.print_mouse_pos()
             world.update()
             pygame.display.update()

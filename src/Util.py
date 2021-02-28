@@ -37,59 +37,60 @@ class UnboundVartagError(Exception):
 class Geometry():
     @staticmethod
     def index_from_coords(coord_list, level=0):
-        output = 0
-        output += int(1*coord_list[0]/2**level)
-        output += int(2*coord_list[1]/2**level)
-        output += int(4*coord_list[2]/2**level)
-        return output
+        return sum(glm.i16vec3(coord_list) * glm.i16vec3(1,2,4) / 2**level)
+
+    @staticmethod   
+    def coord_gen(num):
+        for i in range(8):
+            yield glm.vec3(num) % glm.vec3(2, 4, 8) // glm.vec3(1, 2, 4)
 
     @staticmethod
     def coords_from_index(num, level=0):
-        output = [0, 0, 0]
-        output[0] = int(int(num%2)*(2**level))
-        output[1] = int(int((num%4)/2)*(2**level))
-        output[2] = int(int(num/4)*(2**level))
-        return output
+        return (glm.vec3(num) % glm.vec3(2, 4, 8) // glm.vec3(1, 2, 4) * 2**level).to_list() # this needs to be double-checked. I'm not sure about the order
 
     @staticmethod
     def coord_addition(coord1, coord2):
-        output = coord1[:]
-        for i in range(len(output)):
-            output[i] += coord2[i]
-        return output
+        return (glm.i16vec3(coord1) + glm.i16vec3(coord2)).to_list
 
     @staticmethod
     def coord_div(coord, denom):
-        output = []
-        for i in range(len(coord)):
-            output.append(int(coord[i] / denom))
-        return output
+        return (glm.i16vec3(coord) / denom).to_list()
 
     @staticmethod
     def coord_mod(coord, denom):
-        output = []
-        for i in range(len(coord)):
-            output.append(int(coord[i] % denom))
-        return output
+        return (glm.i16vec3(coord) % denom).to_list
 
     @staticmethod
     def coord_compare_less(coord, value):
-        for num in coord:
-            if num < value:
-                break
+        if 1 in glm.vec3(coord) < value:
+            return False
         else:
             return True
+
+class ToplessInt(int):
+    """A virtual int that can only be used comparatively.
+    It is always greater than the int it is compared to."""
+    def __ge__(self, i:int) -> bool:
+        return True
+
+    def __gt__(self, i:int) -> bool:
+        return True
+
+    def __le__(self, i:int) -> bool:
         return False
 
-    @staticmethod
-    def invert_coords(coord_list, pos):
-        output = list(coord_list)
-        if type(pos) == list:
-            for i in pos:
-                output[i] = abs(coord_list[i] - 1)
-        else:
-            output[pos] = abs(coord_list[pos] - 1)
-        return output
+    def __lt__(self, i:int) -> bool:
+        return False
+
+    def __eq__(self, i:int) -> bool:
+        return False
+
+    def __ne__(self, i:int) -> bool:
+        return True
 
 header_key = {"major":"0x0"}
 root_key = {"level":"0x0", "pos":"0x4"}
+
+if __name__ == "__main__":
+    for i in range(8):
+        print(Geometry.index_from_coords(Geometry.coords_from_index(i, 1), 1))
