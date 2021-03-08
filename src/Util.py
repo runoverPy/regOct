@@ -50,19 +50,19 @@ class Geometry():
 
     @staticmethod
     def coord_addition(coord1, coord2):
-        return (glm.i16vec3(coord1) + glm.i16vec3(coord2)).to_list
+        return (glm.vec3(coord1) + glm.vec3(coord2)).to_list()
 
     @staticmethod
     def coord_div(coord, denom):
-        return (glm.i16vec3(coord) / denom).to_list()
+        return (glm.vec3(coord) // denom).to_list()
 
     @staticmethod
     def coord_mod(coord, denom):
-        return (glm.i16vec3(coord) % denom).to_list
+        return (glm.vec3(coord) % denom).to_list()
 
     @staticmethod
     def coord_compare_less(coord, value):
-        if 1 in glm.vec3(coord) < value:
+        if 1 in (glm.i16vec3(coord) < glm.i16vec3(value)):
             return False
         else:
             return True
@@ -93,4 +93,4 @@ root_key = {"level":"0x0", "pos":"0x4"}
 
 if __name__ == "__main__":
     for i in range(8):
-        print(Geometry.index_from_coords(Geometry.coords_from_index(i, 1), 1))
+        print(Geometry.coords_from_index(i, 1), 1)
