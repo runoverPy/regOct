@@ -10,10 +10,11 @@ import keyboard
 class World:
     """The rendering protocol is out of date and must be updated, this class is currently inoperable."""
     def __init__(self, screen, scope, octree):
+        self.len = 675
+        self.spacing = 1/16
         self.screen = screen
         self.scope = scope # scope corresponds to max visible octree level, a scope of 0 will show 1 leaf, 1:4, 2:16 etc
-        self.posn = glm.vec3(1, 0, 0) # [x, y, z], [int, int, int] bottom right corner of viewer
-        self.heading = glm.vec3(1, 0, 0) # viewer faces positive x
+        self.posn = glm.vec3(0, 0, 0) # [x, y, z], [int, int, int] bottom right corner of viewer
         self.octree = octree
         self.ticks = get_ticks()
         self.last_ticks = get_ticks()
@@ -52,7 +53,22 @@ class World:
             if item["coords"][0]//2**item["level"] == self.posn[0]//2**item["level"]:
                 self.cubes.append(item)
 
-   
+    def length(self, index):
+        localscope = index - self.scope
+        return self.len*(1-(-localscope*self.spacing))*(2**localscope)
+    
+    def space(self, index):
+        localscope = index - self.scope
+        return self.len*self.spacing*(2**localscope)
+
+    def distance(self, index, pos):
+        out = 0
+        for i in range(index, -1, -1):
+            if pos//2**i == 1:
+                out += (2*self.space(i) + self.length(i))
+            pos %= 2**index
+        return out
+
     def edge_length(self, index):
         return 2**(index-self.scope)*(700)-25
 
@@ -63,7 +79,10 @@ class World:
         for cube in self.cubes:
             cube_coords = glm.vec3(cube["coords"]) - self.posn
             cube_level = cube["level"]
+            
             block = pygame.Rect(cube_coords[1]*self.edge_dist(), cube_coords[2]*self.edge_dist(), self.edge_length(cube_level), self.edge_length(cube_level))
+            # block = pygame.Rect(self.distance(cube_level, cube_coords[1]) - self.posn[1] * 100, self.distance(cube_level, cube_coords[2]) - self.posn[2] * 100, self.length(cube_level), self.length(cube_level))
+            
             color = glm.vec3(int(cube["void"])*255).to_list()
             pygame.draw.rect(self.screen, pygame.Color(color), block)
 
