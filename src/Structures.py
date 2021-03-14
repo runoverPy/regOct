@@ -138,6 +138,9 @@ class Node(_OctreeInternal):
     def replaceslot(self, pos, new):
         self.contents[pos] = new
 
+    def subdivide(self):
+        self.contents = list(self.clone(self.level-1, i, self) for i in range(8))
+
     def setleaf(self, data=None):
         self.master.replaceslot(self.pos, Leaf(self.level, self.pos, self.master, data))
         self.destruct()
@@ -259,10 +262,10 @@ class Octree:
 
     # Construction methods
     @classmethod
-    def blank(cls, level):
+    def blank(cls, level, data=None):
         """Create a blank octree"""
         obj = cls(level)
-        obj.octree = Leaf(obj.level, 0, obj, None)
+        obj.octree = Leaf(obj.level, 0, obj, data)
         return obj
 
     @classmethod
