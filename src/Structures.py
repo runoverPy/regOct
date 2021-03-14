@@ -14,24 +14,24 @@ class _OctreeInternal:
         if self.level < 0:
             raise SubdivisionIndexError(self.level)
 
-    def return_attrs(self, key, *requests):
-        try:
-            output = {}
-            for request in requests:
-                output[request] = vars(self)[request]
-            return output
-        except KeyError:
-            pass
-            raise InvalidRequestCallError(self.__class__.__name__, request)
+    def setsubtree(self, src):
+        self.master.replaceslot(self.pos, src.clone(self.level, self.pos, self.master))
+        self.destruct()
+
+    def destruct(self):...
 
 class Leaf(_OctreeInternal):
     def __init__(self, level, pos, master, data):
         super().__init__(level, pos, master)
         self.setleaf(data)
 
+    def destruct(self):
+        del self.master
+
     def clone(self, level, pos, master):
         return Leaf(level, pos, master, self.value)
 
+    # Navigation Methods
     def get(self, coords, minlevel=0, bounded=False):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
             return self
@@ -53,48 +53,57 @@ class Leaf(_OctreeInternal):
 
     def map(self, coords=[0,0,0]):
         next_coords = Geometry.coord_addition(Geometry.coords_from_index(self.pos, self.level), coords)
-        return [{"coords":next_coords, "level":self.level, "pos":self.pos, "type":self.__class__, "void":self.is_void, "data":self.value}]
+        return [{"coords":next_coords, "level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
 
+    # Construction Methods
     def subdivide(self, truncate=False):
         if truncate:
             template = None
         else:
             template = self.value
-        self.to_branch()
+        del self.value
+        self.__class__ = Node
         self.contents = list(Leaf(self.level-1, i, self, template) for i in range(8))
 
     def setleaf(self, data):
         """sets value for leaf"""
-        if data is None:
-            self.value = None
-            self.is_void = True
+        self.value = data
+
+    # Spec Methods
+    def __str__(self):
+        return str({"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value})
+
+    def __bool__(self):
+        return self.value is None
+
+    def __iter__(self):
+        self.has_returned = False
+        return self
+
+    def __next__(self):
+        if self.has_returned:
+            raise StopIteration
         else:
-            self.value = data
-            self.is_void = False
+            self.has_returned = True
+            return [{"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
 
-    def to_branch(self):
-        self.__class__ = Branch
-        del self.value
-        del self.is_void
-
-    def setbranch(self, src):
-        if src.__class__ == Branch:
-            self.to_branch()
-            print(id(self), id(src))
-            self.setbranch(src)
-
-
-class Branch(_OctreeInternal):
-    def __init__(self, level, pos, master):
+class Node(_OctreeInternal):
+    def __init__(self, level, pos, master, template=None):
         super().__init__(level, pos, master)
-        self.contents = []
+        self.contents = list(Leaf(level-1, i, self, template) for i in range(8))
+
+    def destruct(self):
+        del self.master
+        for i in self.contents:
+            i.destruct()
+        del self.contents
 
     def clone(self, level, pos, master):
-        obj = Branch(level, pos, master)
-        print(self.contents)
+        obj = Node(level, pos, master)
         obj.contents = list(self.contents[i].clone(obj.level-1, i, obj) for i in range(8))
         return obj
 
+    # Navigation Methods
     def get(self, coords, minlevel=0, bounded=False):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
             if self.level > minlevel:
@@ -125,22 +134,36 @@ class Branch(_OctreeInternal):
             out.extend(i.map(next_coords))
         return out
 
-    def to_leaf(self):
-        self.__class__ = Leaf
-        del self.contents
+    # Construction Methods
+    def replaceslot(self, pos, new):
+        self.contents[pos] = new
 
-    def setbranch(self, src):
-        print(self.level, src.contents)
-        self.contents = list(src.contents[i].clone(self.level-1, i, self) for i in range(8))
+    def subdivide(self):
+        self.contents = list(self.clone(self.level-1, i, self) for i in range(8))
 
-    def __getitem__(self, pos_coord:list):
-        return self.contents[Geometry.index_from_coords(pos_coord)]
+    def setleaf(self, data=None):
+        self.master.replaceslot(self.pos, Leaf(self.level, self.pos, self.master, data))
+        self.destruct()
 
-    def __setitem__(self, pos_coord:list, src):
-        if src.__class__ == Branch:
-            self.contents = list(Branch.clone(self.level-1, i, self, src.contents[i]) for i in range(8))
-        else:
-            self.to_leaf()
+    # Spec Methods
+    def __str__(self):
+        return "\n".join(str(i) for i in self.contents)
+
+    def __iter__(self):
+        self.n = 0
+        self.reading = iter(self.contents[0])
+        return self
+
+    def __next__(self):
+        try:
+            out = next(self.reading)
+        except StopIteration:
+            self.n += 1
+            if self.n == 8:
+                raise StopIteration
+            self.reading = iter(self.contents[self.n])
+            out = next(self.reading)
+        return out
 
 class Builder:
     def __init__(self, master):
@@ -149,9 +172,9 @@ class Builder:
         self.end_of_line = True
 
     @classmethod
-    def branch(cls, level, pos, master):
+    def node(cls, level, pos, master):
         obj = cls(master)
-        obj.artefact = Branch(level, pos, master.artefact)
+        obj.artefact = Node(level, pos, master.artefact)
         obj.pos = pos
         return obj
 
@@ -171,7 +194,7 @@ class Builder:
 
     def root(self, args):
         if self.master.check_validity(args):
-            self.artefact = Branch(args[root_key["level"]], args[root_key["pos"]], self.master)
+            self.artefact = Node(args[root_key["level"]], args[root_key["pos"]], self.master)
         else:
             raise AttributeDesynchronisationError()
 
@@ -179,7 +202,7 @@ class Builder:
         if self.end_of_line == False:
             self.artefact.contents[self.creating_index].create_branch(args)
         else:
-            self.artefact.contents.append(Builder.branch(self.artefact.level -1, self.creating_index, self))
+            self.artefact.contents.append(Builder.node(self.artefact.level -1, self.creating_index, self))
             self.end_of_line = False
 
     def fill_branch(self, data):
@@ -191,9 +214,9 @@ class Builder:
 
     def close_branch(self, args):
         if self.end_of_line == False:
-            if (branch := self.artefact.contents[self.creating_index].close_branch(args)) != None:
-                self.artefact.contents[self.creating_index] = branch
-                print(branch)
+            if (node := self.artefact.contents[self.creating_index].close_branch(args)) != None:
+                self.artefact.contents[self.creating_index] = node
+                print(node)
                 self.end_of_line = True
                 self.creating_index += 1
             return None
@@ -203,13 +226,29 @@ class Builder:
             return self.artefact
 
 class Octree:
-    """The Class with which octrees will be created."""
+    """The Class with which octrees will be created.
+    It is the Root of the Octree.
+    It acts as a quasi-node, with only one slot"""
     def __init__(self, max_level):
         self.level = max_level
+        self.octree = None
 
-    def get(self, coords):
-        return self.octree.get(coords, bounded=True)
+    # Navigation Methods
+    def get(self, coords, minlevel=0, bounded=False):
+        if self.level > minlevel:
+            return self.octree.get(coords, minlevel, bounded)
+        else:
+            raise Exception
 
+    def construct(self, coords, level, truncate=False):
+        while self.level >= level:
+            self.superset()
+        return self.octree.construct(coords, level, truncate=truncate)
+
+    def map(self):
+        return self.octree.map()
+
+    # Load From File
     @classmethod
     def direct(cls, max_level, file_name):
         out = cls(max_level)
@@ -221,31 +260,49 @@ class Octree:
             return False
         return True
 
-    # Bottom-Up construction methods
+    # Construction methods
     @classmethod
-    def blank(cls, level):
+    def blank(cls, level, data=None):
         """Create a blank octree"""
         obj = cls(level)
-        obj.octree = Leaf(obj.level, 0, obj, None)
+        obj.octree = Leaf(obj.level, 0, obj, data)
         return obj
 
-    def subbranch(self, coords):
-        """Clone a seperate subbranch to a new object"""
-        branch = self.get(coords)
-        obj = Octree(branch.level)
-        obj.octree = branch
+    @classmethod
+    def subtree(cls, src, coords, level):
+        """Clone a seperate subtree to a new object"""
+        node = src.get(coords, level)
+        obj = cls(node.level)
+        obj.octree = node.clone(obj.level, 0, obj)
         return obj
+
+    def superset(self):
+        obj = Node(self.level, 0, self)
+        obj.contents = list(Leaf(obj.level-1, i, obj, None) for i in range(8))
+        obj.contents[self.octree.pos] = self.octree
+        self.octree.master = obj
+        self.octree = obj
+        self.level += 1
+
+    def replaceslot(self, pos, new):
+        self.octree = new
 
     def setleaf(self, coords, level, data):
         self.octree.construct(coords, level).setleaf(data)
 
-    def setbranch(self, coords, level, src):
+    def setsubtree(self, coords, level, src):
         """Insert a seperate Octree to the designated location"""
-        self.octree.construct(coords, level).setbranch(src.octree)
+        self.octree.construct(coords, level).setsubtree(src.octree)
 
-    def map(self):
-        return self.octree.map()
+    def __str__(self):
+        return str(self.octree)
 
+    def __iter__(self):
+        self.iter = iter(self.octree)
+        return self
+
+    def __next__(self):
+        return next(self.iter)
 
 class Addon(ABC):
     def __init__(self):
@@ -257,8 +314,8 @@ class Addon(ABC):
         """The method called to bind a Addon to an octree"""
         obj = cls()
         setattr(bind_to, obj.card, obj)
-        obj.branch = bind_to
+        obj.node = bind_to
 
     @final
     def get(self, coords4):
-        return self.branch.get(coords4).__dict__[self.card]
+        return self.node.get(coords4).__dict__[self.card]
