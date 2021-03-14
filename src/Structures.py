@@ -268,11 +268,10 @@ class Octree:
         obj.octree = Leaf(obj.level, 0, obj, data)
         return obj
 
-    @classmethod
-    def subtree(cls, src, coords, level):
+    def subtree(self, coords, level):
         """Clone a seperate subtree to a new object"""
-        node = src.get(coords, level)
-        obj = cls(node.level)
+        node = self.get(coords, level)
+        obj = Octree(node.level)
         obj.octree = node.clone(obj.level, 0, obj)
         return obj
 
