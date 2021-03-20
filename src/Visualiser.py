@@ -1,107 +1,370 @@
-import sys
-from .Structures import Octree
-from .Reader import Reader
-import pygame
-from pygame.locals import *
-from pygame.time import get_ticks
+import math, sys
+import glfw
+import OpenGL.GL as gl
+import numpy
 import glm
-import keyboard
+from queue import Queue
 
-class World:
-    """The rendering protocol is out of date and must be updated, this class is currently inoperable."""
-    def __init__(self, screen, scope, octree):
-        self.len = 675
-        self.spacing = 1/16
-        self.screen = screen
-        self.scope = scope # scope corresponds to max visible octree level, a scope of 0 will show 1 leaf, 1:4, 2:16 etc
-        self.posn = glm.vec3(0, 0, 0) # [x, y, z], [int, int, int] bottom right corner of viewer
+vs = """
+#version 400 core
+layout(location = 0) in vec3 vertexPosition_modelspace;
+
+uniform vec3 staticcolor;
+uniform mat4 fullmatrix;
+
+out vec3 fragmentColor;
+  
+void main(){
+  gl_Position = fullmatrix * vec4(vertexPosition_modelspace, 1);
+  fragmentColor = staticcolor;
+}
+"""
+
+fs = """
+#version 400 core
+in vec3 fragmentColor;
+
+out vec3 color;
+
+void main(){
+  color = fragmentColor;
+}
+"""
+
+indexed_vertecies = [
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 1.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 1.0,
+        1.0, 1.0, 0.0,
+        1.0, 1.0, 1.0
+        ]
+
+cube_indicies = [
+        7, 4, 6,
+        1, 5, 7, 
+        2, 3, 7, 
+        1, 7, 3, 
+        7, 5, 4,
+        2, 7, 6,
+        4, 2, 6,
+        0, 1, 3,
+        3, 2, 0,
+        0, 5, 1,
+        0, 4, 5,
+        0, 2, 1
+        ]
+
+cube_verticies = [ 
+        1.0, 1.0, 1.0,
+        1.0, 0.0, 0.0,
+        1.0, 1.0, 0.0,
+        0.0, 0.0, 1.0,
+        1.0, 0.0, 1.0,
+        1.0, 1.0, 1.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 1.0,
+        1.0, 1.0, 1.0,
+        0.0, 0.0, 1.0,
+        1.0, 1.0, 1.0,
+        0.0, 1.0, 1.0,
+        1.0, 1.0, 1.0,
+        1.0, 0.0, 1.0,
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        1.0, 1.0, 1.0,
+        1.0, 1.0, 0.0,
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        1.0, 1.0, 0.0,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0,
+        0.0, 1.0, 1.0,
+        0.0, 1.0, 1.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 1.0,
+        0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        1.0, 0.0, 0.0
+        ]
+
+frame_indicies = [
+        0, 1,
+        1, 3,
+        1, 5,
+        6, 7,
+        0, 2,
+        2, 3, 
+        2, 6, 
+        5, 7, 
+        0, 4,
+        4, 5, 
+        4, 6,
+        3, 7
+        ]
+
+frame_verticies = [
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0, 
+        0.0, 1.0, 1.0,
+        0.0, 0.0, 1.0, 
+        1.0, 0.0, 1.0, 
+        1.0, 1.0, 0.0,
+        1.0, 1.0, 1.0,
+        0.0, 0.0, 0.0, 
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0, 
+        0.0, 1.0, 1.0, 
+        0.0, 1.0, 0.0,
+        1.0, 1.0, 0.0,
+        1.0, 0.0, 1.0, 
+        1.0, 1.0, 1.0,
+        0.0, 0.0, 0.0, 
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0, 
+        1.0, 1.0, 0.0, 
+        1.0, 0.0, 0.0, 
+        1.0, 0.0, 1.0,
+        0.0, 1.0, 1.0, 
+        1.0, 1.0, 1.0,
+        ]
+
+def load_shaders(vs, fs):
+    vertex_shader_id = gl.glCreateShader(gl.GL_VERTEX_SHADER)
+    fragment_shader_id = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
+
+    result = gl.GL_FALSE
+    info_log_length = 0
+
+    gl.glShaderSource(vertex_shader_id, vs)
+    gl.glCompileShader(vertex_shader_id)
+
+    gl.glGetShaderiv(vertex_shader_id, gl.GL_COMPILE_STATUS, result)
+    gl.glGetShaderiv(vertex_shader_id, gl.GL_INFO_LOG_LENGTH, info_log_length)
+    if info_log_length > 0:
+        vertex_shader_error_message  = []
+        gl.glGetShaderInfoLog(vertex_shader_id, info_log_length, None, vertex_shader_error_message)
+        print(vertex_shader_error_message)
+
+    gl.glShaderSource(fragment_shader_id, fs)
+    gl.glCompileShader(fragment_shader_id)
+
+    gl.glGetShaderiv(fragment_shader_id, gl.GL_COMPILE_STATUS, result)
+    gl.glGetShaderiv(fragment_shader_id, gl.GL_INFO_LOG_LENGTH, info_log_length)
+    if info_log_length > 0:
+        fragment_shader_error_message  = []
+        gl.glGetShaderInfoLog(fragment_shader_id, info_log_length, None, fragment_shader_error_message)
+        print(fragment_shader_error_message)
+
+    program_id = gl.glCreateProgram()
+    gl.glAttachShader(program_id, vertex_shader_id)
+    gl.glAttachShader(program_id, fragment_shader_id)
+
+    gl.glLinkProgram(program_id)
+    print(gl.glGetProgramInfoLog(program_id))
+
+    gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS, result)
+    gl.glGetProgramiv(program_id, gl.GL_INFO_LOG_LENGTH, info_log_length)
+    if info_log_length > 0:
+        program_error_message  = []
+        gl.glGetProgramInfoLog(program_id, info_log_length, None, program_error_message)
+        print(program_error_message)
+
+    gl.glDetachShader(program_id, vertex_shader_id)
+    gl.glDetachShader(program_id, fragment_shader_id)
+
+    gl.glDeleteShader(vertex_shader_id)
+    gl.glDeleteShader(fragment_shader_id)
+
+    return program_id
+
+class Display:
+    def __init__(self, octree):
         self.octree = octree
-        self.ticks = get_ticks()
-        self.last_ticks = get_ticks()
+        self.octree_data = []
+        self.window_dims = [1280, 960]
+        
+        self.fulcrum = glm.vec3(2**(octree.level-1))  # orbit center of camera
+        self.dist = 16
+        self.barrier = 0
+        
+        self.h_angle = math.pi/4
+        self.v_angle = -1*math.pi/8
+        self.initial_fov = 45.0
 
-    def change_posn(self):
-        if get_ticks() - self.ticks >= 250: 
-            if keyboard.is_pressed("up arrow"):
-                self.posn[0] += 1
-                self.ticks = get_ticks()
-            if keyboard.is_pressed("down arrow"):
-                self.posn[0] -= 1
-                self.ticks = get_ticks()
-            if keyboard.is_pressed("left arrow") and self.scope > 0:
-                self.scope -= 1
-                self.ticks = get_ticks()
-            if keyboard.is_pressed("right arrow"):
-                self.scope += 1
-                self.ticks = get_ticks()
-        delta_time = get_ticks() - self.last_ticks
-        self.last_ticks = get_ticks()
-        if keyboard.is_pressed("W"):
-            self.posn[2] -= 0.03 * delta_time * 2**(self.scope - 3)
-        if keyboard.is_pressed("A"):
-            self.posn[1] -= 0.03 * delta_time * 2**(self.scope - 3)
-        if keyboard.is_pressed("S"):
-            self.posn[2] += 0.03 * delta_time * 2**(self.scope - 3)
-        if keyboard.is_pressed("D"):
-            self.posn[1] += 0.03 * delta_time * 2**(self.scope - 3)
+        self.fill_color = glm.vec3(0.9)
 
-    def update_data(self):
-        self.cubes = []
-        length = 2**self.scope
-        bottom_limit = glm.vec3(0) - self.posn
-        top_limit = glm.vec3(length) - self.posn
-        for item in self.octree.map():            
-            if item["coords"][0]//2**item["level"] == self.posn[0]//2**item["level"]:
-                self.cubes.append(item)
+        self.speed = 3.0
+        self.mouse_speed = 0.5
 
-    def length(self, index):
-        localscope = index - self.scope
-        return self.len*(1-(-localscope*self.spacing))*(2**localscope)
+        self.projectionmatrix = glm.perspective(glm.radians(45.0), 1280/960, 0.1, 100.0)
     
-    def space(self, index):
-        localscope = index - self.scope
-        return self.len*self.spacing*(2**localscope)
+        print(glfw.init())
+        print(glfw.get_error())
+        
+        self.last_time = glfw.get_time()
 
-    def distance(self, index, pos):
-        out = 0
-        for i in range(index, -1, -1):
-            if pos//2**i == 1:
-                out += (2*self.space(i) + self.length(i))
-            pos %= 2**index
-        return out
+        self.window = glfw.create_window(self.window_dims[0], self.window_dims[1], "Hello World", None, None)
+        if not self.window:
+            glfw.terminate()
+            return
 
-    def edge_length(self, index):
-        return 2**(index-self.scope)*(700)-25
+        glfw.make_context_current(self.window)
+        gl.glClearColor(0.0, 0.6, 1.0, 0.0)
 
-    def edge_dist(self):
-        return self.edge_length(0) + 25
+        self.program_id = load_shaders(vs, fs)
+        gl.glUseProgram(self.program_id)
+        
+        self.color_id = gl.glGetUniformLocation(self.program_id, "staticcolor")
+        self.fullmatrix_id = gl.glGetUniformLocation(self.program_id, "fullmatrix")
+
+        self.vertex_array_id = gl.glGenVertexArrays(1)
+        gl.glBindVertexArray(self.vertex_array_id)
+
+        # self.vertex_buffer = gl.glGenBuffers(1)
+        # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertex_buffer)
+        # indexed_vertex_data = numpy.array(indexed_vertecies, numpy.float32)
+        # gl.glBufferData(gl.GL_ARRAY_BUFFER, len(indexed_vertex_data)*4, indexed_vertex_data, gl.GL_STATIC_DRAW)
+
+        # self.cube_index_buffer = gl.glGenBuffers(1)
+        # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.cube_index_buffer)
+        # cube_index_data = numpy.array(cube_indicies, numpy.uint16)
+        # gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, len(cube_index_data)*2, cube_index_data, gl.GL_STATIC_DRAW)
+
+        # self.frame_index_buffer = gl.glGenBuffers(1)
+        # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.frame_index_buffer)
+        # frame_index_data = numpy.array(frame_indicies, numpy.uint16)
+        # gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, len(frame_index_data)*2, frame_index_data, gl.GL_STATIC_DRAW)
+
+        # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, 0)
+
+        self.cube_vertex_buffer = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.cube_vertex_buffer)
+        cube_vertex_data = numpy.array(cube_verticies, numpy.float32)
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, len(cube_vertex_data)*4, cube_vertex_data, gl.GL_STATIC_DRAW)
+
+        self.frame_vertex_buffer = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.frame_vertex_buffer)
+        frame_vertex_data = numpy.array(frame_verticies, numpy.float32)
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, len(frame_vertex_data)*4, frame_vertex_data, gl.GL_STATIC_DRAW)
+
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+
+        gl.glLineWidth(3)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glDepthFunc(gl.GL_LESS)
+        gl.glEnable(gl.GL_CULL_FACE)
+
+    def poll_octree_data(self):
+        tmp = self.octree.map()
+        self.octree_data = []
+        for line in tmp:
+            if line["void"]:
+                color = glm.vec3(0)
+            else:
+                color = glm.vec3(0, 1, 0)
+            self.octree_data.append({"pos":line["coords"], "level":line["level"], "fill":not line["void"], "framecolor":color})
 
     def draw(self):
-        for cube in self.cubes:
-            cube_coords = glm.vec3(cube["coords"]) - self.posn
-            cube_level = cube["level"]
-            
-            block = pygame.Rect(cube_coords[1]*self.edge_dist(), cube_coords[2]*self.edge_dist(), self.edge_length(cube_level), self.edge_length(cube_level))
-            # block = pygame.Rect(self.distance(cube_level, cube_coords[1]) - self.posn[1] * 100, self.distance(cube_level, cube_coords[2]) - self.posn[2] * 100, self.length(cube_level), self.length(cube_level))
-            
-            color = glm.vec3(int(cube["void"])*255).to_list()
-            pygame.draw.rect(self.screen, pygame.Color(color), block)
+        gl.glUseProgram(self.program_id)
+        
+        viewmatrix = self.probeKeyBoard() # called once each draw call
+        
+        # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertex_buffer)
+        # gl.glEnableVertexAttribArray(0)
+        # gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
 
-    def print_mouse_pos(self):
-        sys.stdout.write(f'\r{pygame.mouse.get_pos()}        ')
 
-class Displayer:
-    def __init__(self, octree):
-        pygame.init()
-        self.window = pygame.display.set_mode((675, 675))
-        pygame.display.set_caption("super awesome octree viewer")
-        self.screen = pygame.display.get_surface()
-        screen = self.screen
-        world = World(screen, 3, octree)
-        while not keyboard.is_pressed("escape"):    
-            pygame.event.get()
-            screen.fill(pygame.Color(100,100,100))
-            world.change_posn()   
-            world.update_data()
-            world.draw()
-            world.print_mouse_pos()
-            pygame.display.update()
+        for cube in self.octree_data:
+            modelmatrix = glm.translate(glm.mat4(1), glm.vec3(cube["pos"])) * glm.scale(glm.mat4(1), glm.vec3(2**cube["level"])) 
+            fullmatrix = self.projectionmatrix * viewmatrix * modelmatrix
+            gl.glUniformMatrix4fv(self.fullmatrix_id, 1, gl.GL_FALSE, glm.value_ptr(fullmatrix)) # called once each cube
+            
+            if cube["fill"]:
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.cube_vertex_buffer)
+                gl.glEnableVertexAttribArray(0)
+                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
+                gl.glUniform3fv(self.color_id, 1, glm.value_ptr(self.fill_color))
+                gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(cube_verticies))
+
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.frame_vertex_buffer)
+                gl.glEnableVertexAttribArray(0)
+                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
+                gl.glUniform3fv(self.color_id, 1, glm.value_ptr(glm.vec3(1, 0, 0)))
+                gl.glDrawArrays(gl.GL_LINES, 0, len(frame_verticies))
+
+            else:
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.frame_vertex_buffer)
+                gl.glEnableVertexAttribArray(0)
+                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
+                gl.glUniform3fv(self.color_id, 1, glm.value_ptr(glm.vec3(0, 0, 1)))
+                gl.glDrawArrays(gl.GL_LINES, 0, len(frame_verticies))
+
+            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+
+            # if cube["fill"]:
+            #     gl.glUniform3fv(self.color_id, 1, glm.value_ptr(self.fill_color))
+            #     gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.cube_index_buffer)
+            #     gl.glDrawElements(gl.GL_TRIANGLES, len(cube_indicies), gl.GL_UNSIGNED_INT, None)
+
+            # gl.glUniform3fv(self.color_id, 1, glm.value_ptr(cube["framecolor"]))
+            # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.frame_index_buffer)
+            # gl.glDrawElements(gl.GL_LINES, len(frame_indicies), gl.GL_UNSIGNED_INT, None)
+        
+        gl.glDisableVertexAttribArray(0)
+
+
+
+    def main(self):
+        self.poll_octree_data()
+        while not glfw.get_key(self.window, glfw.KEY_ESCAPE) == glfw.PRESS:
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+
+            self.draw()
+            glfw.swap_buffers(self.window)
+            glfw.poll_events() 
+
+        glfw.terminate()
+
+    def probeKeyBoard(self):  
+        """returns updated view matrix"""
+        self.current_time = glfw.get_time()
+        self.delta_time = self.current_time - self.last_time
+        self.last_time = self.current_time
+
+        if(glfw.get_key(self.window, glfw.KEY_W) == glfw.PRESS):
+            self.v_angle -= self.delta_time * self.speed
+
+        if(glfw.get_key(self.window, glfw.KEY_S) == glfw.PRESS):
+            self.v_angle += self.delta_time * self.speed
+
+        if(glfw.get_key(self.window, glfw.KEY_D) == glfw.PRESS):
+            self.h_angle += self.delta_time * self.speed
+
+        if(glfw.get_key(self.window, glfw.KEY_A) == glfw.PRESS):
+            self.h_angle -= self.delta_time * self.speed
+
+        self.h_angle %= math.pi*2
+        self.v_angle %= math.pi*2
+
+        direction = glm.vec3(math.cos(self.v_angle) * math.sin(self.h_angle),
+                            math.sin(self.v_angle),
+                            math.cos(self.v_angle) * math.cos(self.h_angle))
+        position = self.fulcrum - self.dist * direction
+
+
+        right = glm.vec3(math.sin(self.h_angle - math.pi/2), 0, math.cos(self.h_angle - math.pi/2))
+        up = glm.cross(right, direction)
+        return glm.lookAt(position, self.fulcrum, up)
