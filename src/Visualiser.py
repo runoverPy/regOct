@@ -31,32 +31,6 @@ void main(){
 }
 """
 
-indexed_vertecies = [
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0,
-        0.0, 1.0, 0.0,
-        0.0, 1.0, 1.0,
-        1.0, 0.0, 0.0,
-        1.0, 0.0, 1.0,
-        1.0, 1.0, 0.0,
-        1.0, 1.0, 1.0
-        ]
-
-cube_indicies = [
-        7, 4, 6,
-        1, 5, 7, 
-        2, 3, 7, 
-        1, 7, 3, 
-        7, 5, 4,
-        2, 7, 6,
-        4, 2, 6,
-        0, 1, 3,
-        3, 2, 0,
-        0, 5, 1,
-        0, 4, 5,
-        0, 2, 1
-        ]
-
 cube_verticies = [ 
         1.0, 1.0, 1.0,
         1.0, 0.0, 0.0,
@@ -96,21 +70,6 @@ cube_verticies = [
         1.0, 0.0, 0.0
         ]
 
-frame_indicies = [
-        0, 1,
-        1, 3,
-        1, 5,
-        6, 7,
-        0, 2,
-        2, 3, 
-        2, 6, 
-        5, 7, 
-        0, 4,
-        4, 5, 
-        4, 6,
-        3, 7
-        ]
-
 frame_verticies = [
         0.0, 0.0, 0.0,
         0.0, 0.0, 1.0,
@@ -136,6 +95,47 @@ frame_verticies = [
         1.0, 0.0, 1.0,
         0.0, 1.0, 1.0, 
         1.0, 1.0, 1.0,
+        ]
+
+indexed_vertecies = [
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 1.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 1.0,
+        1.0, 1.0, 0.0,
+        1.0, 1.0, 1.0
+        ]
+
+cube_indicies = [
+        7, 4, 6,
+        1, 5, 7, 
+        2, 3, 7, 
+        1, 7, 3, 
+        7, 5, 4,
+        2, 7, 6,
+        4, 2, 6,
+        0, 1, 3,
+        3, 2, 0,
+        0, 5, 1,
+        0, 4, 5,
+        0, 2, 1
+        ]
+
+frame_indicies = [
+        0, 1,
+        1, 3,
+        1, 5,
+        6, 7,
+        0, 2,
+        2, 3, 
+        2, 6, 
+        5, 7, 
+        0, 4,
+        4, 5, 
+        4, 6,
+        3, 7
         ]
 
 def load_shaders(vs, fs):
@@ -194,26 +194,31 @@ class Display:
         self.window_dims = [1280, 960]
         
         self.fulcrum = glm.vec3(2**(octree.level-1))  # orbit center of camera
-        self.dist = 16
-        self.barrier = 0
+        self.direction = glm.vec3(0)
+        self.position = glm.vec3(0)
+        self.dist = 8
+        self.barrier = 7
         
         self.h_angle = math.pi/4
-        self.v_angle = -1*math.pi/8
-        self.initial_fov = 45.0
+        self.v_angle = 0 # -1*math.pi/8
+        self.initial_fov = 60.0
 
         self.fill_color = glm.vec3(0.9)
 
-        self.speed = 3.0
+        self.speed = 1.0
         self.mouse_speed = 0.5
 
-        self.projectionmatrix = glm.perspective(glm.radians(45.0), 1280/960, 0.1, 100.0)
+        self.projectionmatrix = glm.perspective(glm.radians(60.0), 1280/960, 0.1, 100.0)
     
-        print(glfw.init())
-        print(glfw.get_error())
+        if not glfw.init():
+            print(glfw.get_error())
+            return
         
         self.last_time = glfw.get_time()
 
-        self.window = glfw.create_window(self.window_dims[0], self.window_dims[1], "Hello World", None, None)
+        glfw.window_hint(glfw.SAMPLES, 4)
+
+        self.window = glfw.create_window(self.window_dims[0], self.window_dims[1], "Octrees!", None, None)
         if not self.window:
             glfw.terminate()
             return
@@ -259,9 +264,13 @@ class Display:
 
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
 
-        gl.glLineWidth(3)
+
+        gl.glEnable(gl.GL_POLYGON_OFFSET_FILL)
+        gl.glPolygonOffset(1, -1)
+        gl.glLineWidth(2)
+        gl.glEnable(gl.GL_BLEND)
         gl.glEnable(gl.GL_DEPTH_TEST)
-        gl.glDepthFunc(gl.GL_LESS)
+        gl.glDepthFunc(gl.GL_LEQUAL)
         gl.glEnable(gl.GL_CULL_FACE)
 
     def poll_octree_data(self):
@@ -283,13 +292,19 @@ class Display:
         # gl.glEnableVertexAttribArray(0)
         # gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
 
+        barrier_vector = self.barrier*self.direction
 
         for cube in self.octree_data:
+            
             modelmatrix = glm.translate(glm.mat4(1), glm.vec3(cube["pos"])) * glm.scale(glm.mat4(1), glm.vec3(2**cube["level"])) 
             fullmatrix = self.projectionmatrix * viewmatrix * modelmatrix
             gl.glUniformMatrix4fv(self.fullmatrix_id, 1, gl.GL_FALSE, glm.value_ptr(fullmatrix)) # called once each cube
+                            
+            if glm.dot(glm.vec3(cube["pos"]) + glm.vec3(2**(cube["level"]-1)) - (self.position + barrier_vector), barrier_vector) < 0:
+                continue
             
             if cube["fill"]:
+
                 gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.cube_vertex_buffer)
                 gl.glEnableVertexAttribArray(0)
                 gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
@@ -359,12 +374,13 @@ class Display:
         self.h_angle %= math.pi*2
         self.v_angle %= math.pi*2
 
-        direction = glm.vec3(math.cos(self.v_angle) * math.sin(self.h_angle),
+        self.direction = glm.vec3(math.cos(self.v_angle) * math.sin(self.h_angle),
                             math.sin(self.v_angle),
                             math.cos(self.v_angle) * math.cos(self.h_angle))
-        position = self.fulcrum - self.dist * direction
+        
+        self.position = self.fulcrum - self.dist * self.direction
 
 
         right = glm.vec3(math.sin(self.h_angle - math.pi/2), 0, math.cos(self.h_angle - math.pi/2))
-        up = glm.cross(right, direction)
-        return glm.lookAt(position, self.fulcrum, up)
+        up = glm.cross(right, self.direction)
+        return glm.lookAt(self.position, self.fulcrum, up)

@@ -1,4 +1,4 @@
-from queue import Queue
+from queue import Queue, LifoQueue
 
 class Reader:
     def __init__(self, file_name):
@@ -6,13 +6,13 @@ class Reader:
         self.direct_output = False
         self.file_name = file_name
         self.commands = [
-            {"!":"header", "?":"root", "/":"create_branch", "&":"fill_branch", "#":"close_branch"},     # Commands
-            {'"':"set_value", "'":"set_value", "*":"set_iterations", "@":"set_vartag", ";":"finish"},   # Modifiers
+            {"!":"header", "?":"root", "/":"create_branch", "&":"fill_branch", "%":"close_branch"},     # Commands
+            {'"':"set_value", "'":"set_value", "":"", "*":"set_iterations", "@":"set_vartag", ";":"finish"},   # Modifiers
             {'"':"load_char", "'":"load_int"}]                                                          # Parameters
 
         self.processes = ["assign_command", "assign_modifier", "run_modifier"]
         self.state = [0, "", ""]        # Active Process | Active Modifier | Active Parameter
-        self.data = ["", {}, 1]         # Command | Parameters | Iterations 
+        self.data = ["", [], 1]         # Command | Parameters | Iterations 
         self.buffer = ["", "", 0]       # VarTag | DataString | Chars Remaining
 
     @classmethod
@@ -20,7 +20,7 @@ class Reader:
         out = cls(file_name)
         out.target = target
         out.direct_output = True
-        return out
+        return out 
 
     def run(self):
         with open(self.file_name, "r") as data_file:
@@ -29,28 +29,18 @@ class Reader:
                     if b != " " and b != "\n":
                         getattr(self, self.processes[self.state[0]])(b)
 
-    def run_as_generator(self):
-        with open(self.file_name, "r") as data_file:
+    @classmethod
+    def run_as_generator(cls, file_name):
+        reader = cls(file_name)
+        with open(reader.file_name, "r") as data_file:
                 while (char := data_file.read(1)) != "":
                     if char != " " and char != "\n":
-                        if char == ";" and self.state[0] == 1:
-                            yield self.data
-                            self.state = [0, "", ""]
-                            self.data = ["", {}, 1]
+                        if char == ";" and reader.state[0] == 1:
+                            yield reader.data
+                            reader.state = [0, "", ""]
+                            reader.data = ["", {}, 1]
                         else:
-                            getattr(self, self.processes[self.state[0]])(char)
-
-    def read_bits(self):
-        with open(self.file_name, "rb") as data_file:
-                all_data = data_file.read()
-                for b in all_data:
-                    b = hex(int(b)) 
-                    if b != " " and b != "\n":
-                        print(b)
-
-    def update_machine(self, char):
-        if char != " " and char != "\n":
-            getattr(self, self.processes[self.state[0]])(char)
+                            getattr(reader, reader.processes[reader.state[0]])(char)
 
     # Assigning Methods
     def assign_command(self, cmd):
@@ -77,13 +67,9 @@ class Reader:
             self.buffer[1] += val
             self.buffer[2] -= 1
         if self.buffer[2] == 0:
-            self.data[1][self.buffer[0]] = getattr(self, self.state[2])(self.buffer[1])
+            self.data[1].append(getattr(self, self.state[2])(self.buffer[1]))
             self.buffer = ["", "", 0]
             self.state[0] = 1
-
-    def set_vartag(self, vartag):
-        self.state[0] = 1
-        self.buffer[0] = str(hex(int(vartag)))
 
     def set_iterations(self, iters):
         self.state[0] = 1
@@ -102,9 +88,10 @@ class Reader:
             self.output.append(self.data)
         else:
             for i in range(self.data[2]):
+                print(self.data)
                 getattr(self.target, self.data[0])(self.data[1])
         self.state = [0, "", ""]
-        self.data = ["", {}, 1]
+        self.data = ["", [], 1]
 
     def format_to_line(self):
         with open(self.file_name, "r") as data_file:
@@ -131,20 +118,3 @@ class Reader:
                 write_file.write(char)
                 if char in {"/", "?"}:
                     current_level += 1
-
-class Compiler:
-    def __init__(self, file_name):
-        self.reader = Reader(file_name)
-
-    def load(self, target, setup):
-        data = self.reader.run_as_generator()
-        target = target
-        for packet in data:
-            print(packet)
-            for i in range(packet[2]):
-                print(target)
-                target = getattr(target, packet[0])(packet[1])
-
-    def print_all_data(self):
-        for i in self.reader.run_as_generator():
-            print(i)

@@ -74,7 +74,7 @@ class Leaf(_OctreeInternal):
         return str({"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value})
 
     def __bool__(self):
-        return self.value is None
+        return self.value is None or self.value == []
 
     def __iter__(self):
         self.has_returned = False
@@ -165,25 +165,22 @@ class Node(_OctreeInternal):
             out = next(self.reading)
         return out
 
-class Builder:
-    def __init__(self, master):
-        self.master = master
+class Builder(_OctreeInternal):
+    def __init__(self, level, pos, master):
+        super().__init__(level, pos, master)
         self.creating_index = 0
         self.end_of_line = True
+        self.artefact = []
+
 
     @classmethod
-    def node(cls, level, pos, master):
-        obj = cls(master)
-        obj.artefact = Node(level, pos, master.artefact)
-        obj.pos = pos
+    def load(cls, octree, file_name):
+        obj = cls(0, 0, octree)        
+        Reader.entangle(obj, file_name).run()
         return obj
 
-    def load(self, file_name):
-        Reader.entangle(self, file_name).run()
-        self.master.octree = self.artefact
-
     def header(self, data):
-        if data["0x0"] != "0.0.2":
+        if data[0] != "0.0.2":
             warnings.warn("The ONC version of the file has been outdated.")
             if (output := input("UPDATE FILE: (y/n)\n"))[0] == "y":
                 print("its definitely updating rn")
@@ -191,39 +188,36 @@ class Builder:
                 print("your loss")
                 time.sleep(1)
                 raise ToasterBathError()
-
-    def root(self, args):
-        if self.master.check_validity(args):
-            self.artefact = Node(args[root_key["level"]], args[root_key["pos"]], self.master)
-        else:
-            raise AttributeDesynchronisationError()
+        self.master.level = data[1]
+        self.level = data[1]
 
     def create_branch(self, args):
         if self.end_of_line == False:
-            self.artefact.contents[self.creating_index].create_branch(args)
+            self.artefact[self.creating_index].create_branch(args)
         else:
-            self.artefact.contents.append(Builder.node(self.artefact.level -1, self.creating_index, self))
+            self.artefact.append(Builder(self.level -1, self.creating_index, self))
             self.end_of_line = False
 
     def fill_branch(self, data):
         if self.end_of_line == False:
-            self.artefact.contents[self.creating_index].fill_branch(data)
+            self.artefact[self.creating_index].fill_branch(data)
         else:
-            self.artefact.contents.append(Leaf(self.artefact.level -1, self.creating_index, self, data))
+            self.artefact.append(Leaf(self.level -1, self.creating_index, self, data))
             self.creating_index += 1
 
     def close_branch(self, args):
         if self.end_of_line == False:
-            if (node := self.artefact.contents[self.creating_index].close_branch(args)) != None:
-                self.artefact.contents[self.creating_index] = node
-                print(node)
-                self.end_of_line = True
+            if self.artefact[self.creating_index].close_branch(args):
                 self.creating_index += 1
-            return None
+                self.end_of_line = True
+            return False
         else:
-            # the superiors octree attribute must be edited here
-            print(self.artefact.__dict__)
-            return self.artefact
+            self.contents = self.artefact
+            self.__class__ = Node
+            del self.artefact
+            del self.end_of_line
+            del self.creating_index
+            return True
 
 class Octree:
     """The Class with which octrees will be created.
@@ -250,15 +244,10 @@ class Octree:
 
     # Load From File
     @classmethod
-    def direct(cls, max_level, file_name):
-        out = cls(max_level)
-        Builder(out).load(file_name)
+    def load(cls, file_name):
+        out = cls(None)
+        out.octree = Builder.load(out, file_name)
         return out
-
-    def check_validity(self, args):
-        if args[root_key["level"]] != self.level:
-            return False
-        return True
 
     # Construction methods
     @classmethod
