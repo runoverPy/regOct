@@ -188,8 +188,10 @@ class Builder(_OctreeInternal):
                 print("your loss")
                 time.sleep(1)
                 raise ToasterBathError()
-        self.master.level = data[1]
-        self.level = data[1]
+    
+    def root(self, data):
+        self.master.level = data[0]
+        self.level = data[0]
 
     def create_branch(self, args):
         if self.end_of_line == False:
