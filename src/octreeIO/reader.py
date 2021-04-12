@@ -10,6 +10,7 @@ def load(file_name):
     out = Octree(lvl)
     with BuilderHelper(out) as bh:
         for cmd, value in cmdstream:
+            print(cmd)
             getattr(bh, cmd)(value)
     return out        
 
@@ -90,15 +91,11 @@ class Command:
 class Parser:
     commands = {
         b"\x00":"header", b"\x01":"seed",
-        
         b"\x04":"crnd", b"\x05":"nxnd", b"\x06":"clnd", b"\x07":"flnd", 
         b"\x08":"nlnd", b"\x09":"vdnd", b"\x0a":"fsnd", b"\x0b":"trnd",
-        
         b"\x20":  "i8", b"\x21": "i16", b"\x22": "i32", b"\x23": "i64",
         b"\x24": "ui8", b"\x25":"ui16", b"\x26":"ui32", b"\x27":"ui64",
-        
         b"\x28": "f32", b"\x29": "f64", b"\x2a": "c64", b"\x2b":"c128",
-        
         b"\x40": "Str", b"\x41":"List", b"\x42":"Dict", b"\x43":"Set"
     }
     
@@ -111,8 +108,7 @@ class Parser:
             obj = cls(io)
             obj.run_next()
             while (next_byte := obj.io.read(1)):
-                for command in getattr(obj, obj.commands[next_byte])().process():
-                    yield command
+                yield from getattr(obj, obj.commands[next_byte])().process()
 
     def run_next(self):
         if (next_byte := self.io.read(1)):

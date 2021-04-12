@@ -374,7 +374,8 @@ class Display:
         self.h_angle %= math.pi*2
         self.v_angle %= math.pi*2
 
-        self.direction = glm.vec3(math.cos(self.v_angle) * math.sin(self.h_angle),
+        self.direction = glm.vec3(
+                            math.cos(self.v_angle) * math.sin(self.h_angle),
                             math.sin(self.v_angle),
                             math.cos(self.v_angle) * math.cos(self.h_angle))
         

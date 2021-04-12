@@ -54,6 +54,9 @@ class Leaf(_OctreeInternal):
         next_coords = Geometry.coord_addition(Geometry.coords_from_index(self.pos, self.level), coords)
         return [{"coords":next_coords, "level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
 
+    def list_all(self):
+        yield {"level":self.level, "pos":self.pos, "type":self.__class__, "data":self.value}
+
     # Construction Methods
     def subdivide(self, truncate=False):
         if truncate:
@@ -84,7 +87,7 @@ class Leaf(_OctreeInternal):
             raise StopIteration
         else:
             self.has_returned = True
-            return [{"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
+            return {"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}
 
 class Node(_OctreeInternal):
     def __init__(self, level, pos, master, template=None):
@@ -132,6 +135,11 @@ class Node(_OctreeInternal):
         for i in self.contents:
             out.extend(i.map(next_coords))
         return out
+
+    def list_all(self):
+        yield {"level":self.level, "pos":self.pos, "type":self.__class__}
+        for member in self.contents:
+            yield from member.list_all()
 
     # Construction Methods
     def replaceslot(self, pos, new):
@@ -186,6 +194,9 @@ class Octree:
 
     def map(self):
         return self.octree.map()
+
+    def list_all(self):
+        return self.octree.list_all()
 
     # Construction methods
     @classmethod
