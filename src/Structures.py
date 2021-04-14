@@ -242,6 +242,8 @@ class Octree:
         return next(self.iter)
 
 class Addon(ABC):
+    """this class has not been implemented yet. In the future, you will be able to use octree addons for automating tasks. probably."""
+    
     def __init__(self):
         self.card = "addon_base"
 

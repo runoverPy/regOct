@@ -1,13 +1,96 @@
 from ..Structures import Octree
 from queue import LifoQueue
+from struct import pack
 
 # here octree instances and orc files will be compiled to onc files
 
-def save(file_name):...
+def save(octree, file_name):
+    comp = Compiler()
+    with open(file_name, "wb") as io:
+        for command in scanner(octree):
+            io.write(comp.translate(command))
 
-def readout(octree):
-    for dataset in iter(octree):
-        print(dataset)
+def scanner(octree):
+    def process(data):
+        nonlocal lastlevel
+        for i in range(lastlevel - data["level"]):
+            counter.put(0)
+            lastlevel -= 1
+            yield Command.create_node()
+        
+        yield Command.fill_node(data["data"])
+
+        for i in range(increment_counter()):
+            lastlevel += 1
+            yield Command.close_node() 
+
+    def increment_counter():
+        if counter.empty():
+            return 0 
+        lastcount = counter.get()
+        lastcount += 1
+        if lastcount == 8:
+            counter.task_done()
+            return 1 + increment_counter()
+        else:
+            counter.put(lastcount)
+            return 0
+
+    lastlevel = octree.level
+    counter = LifoQueue()
+    yield Command.header()
+    yield Command.seed(octree.level)
+    for data in iter(octree):
+        yield from process(data)
+
+class Command:
+    singletons = {
+        None:"nlnd",
+        Ellipsis:"vdnd",
+        False:"fsnd",
+        True:"trnd"
+    }
+
+    def __init__(self, cmd, value=None):
+        self.cmd = cmd
+        self.count = 1
+        self.value = value
+
+    def __str__(self):
+        out = self.cmd
+        if self.value is not None:
+            out += " " + str(self.value)
+        return out
+
+    def __eq__(self, other):
+        if type(other) == type(self):
+            if other.cmd == self.cmd:
+                if other.value == self.value:
+                    return True
+        return False
+
+    @classmethod
+    def header(cls, version="0.0.1"):
+        return cls("header", version)
+
+    @classmethod
+    def seed(cls, level):
+        return cls("seed", level)
+
+    @classmethod
+    def fill_node(cls, value):
+        if value in cls.singletons:
+            return cls(cls.singletons[value])
+        else:
+            return cls("flnd", value)
+
+    @classmethod
+    def create_node(cls):
+        return cls("crnd")
+
+    @classmethod
+    def close_node(cls):
+        return cls("clnd")
     
 class Compiler:
     conversion = {
@@ -21,10 +104,6 @@ class Compiler:
          'f32':b'\x28',  'f64':b'\x29',  'c64':b'\x2a', 'c128':b'\x2b', 
          'Str':b'\x40', 'List':b'\x41', 'Dict':b'\x42',  'Set':b'\x43'
     }
-
-
-
-class Scanner:
     pystandard = {
         int: "i16", 
         float: "f64",
@@ -34,56 +113,72 @@ class Scanner:
         dict: "Dict",
         set: "Set"
     }
-    singletons = {
-        None:"nlnd",
-        Ellipsis:"vdnd",
-        False:"fsnd",
-        True:"trnd"
-    }
 
-    def __init__(self, octree):
-        self.octree = octree
-        self.lastlevel = octree.level
-        self.counter = LifoQueue()
-        # on each node wrapper call, add int 0
+    def translate(self, command:Command):
+        return getattr(self, command.cmd)(command)
 
-    def breakdown(self):
-        yield self.header()
-        yield self.seed()
-        for data in iter(self.octree):
-            yield from self.process(data)
+    def convert(self, value):
+        return self.conversion[self.pystandard[type(value)]] + getattr(self, self.pystandard[type(value)])(value)
 
-    def header(self):
-        return ["header", "0.0.1"]
-    def seed(self):
-        return ["seed", self.octree.level]
+    def header(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.convert(command.value)])
+    def seed(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.convert(command.value)])
+    
+    def crnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    def nxnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    def clnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    def flnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count), command.value])
 
-    def count(self):...
+    def nlnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    def vdnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    def fsnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    def trnd(self, command:Command):
+        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+    
+    # data types: return a value
+    # basic data types
+    
+    def i8(self, value):
+        return value.to_bytes(1, byteorder="big", signed=True)
+    def i16(self, value):
+        return value.to_bytes(2, byteorder="big", signed=True)
+    def i32(self, value):
+        return value.to_bytes(4, byteorder="big", signed=True)
+    def i64(self, value):
+        return value.to_bytes(8, byteorder="big", signed=True)
 
-    def process(self, data):
-        for i in range(self.lastlevel - data["level"]):
-            self.counter.put(0)
-            self.lastlevel -= 1
-            yield ["crnd"]
-        
-        if data["data"] in self.singletons:
-            yield [self.singletons[data["data"]]]
-        else:
-            yield ["flnd"]
+    def ui8(self, value):
+        return value.to_bytes(1, byteorder="big", signed=False)
+    def ui16(self, value):
+        return value.to_bytes(2, byteorder="big", signed=False)
+    def ui32(self, value):
+        return value.to_bytes(4, byteorder="big", signed=False)
+    def ui64(self, value):
+        return value.to_bytes(8, byteorder="big", signed=False)
 
-        for i in range(self.increment_counter()):
-            self.lastlevel += 1
-            yield ["clnd"] 
+    def f32(self, value):
+        return pack("f", value)
+    def f64(self, value):
+        return pack("d", value)
+    def k64(self, value):
+        return pack("ff", value.real, value.imag)
+    def k128(self, value):
+        return pack("dd", value.real, value.imag)
 
-    def increment_counter(self):
-        if self.counter.empty():
-            return 0 
-        lastcount = self.counter.get()
-        lastcount += 1
-        if lastcount == 8:
-            self.counter.task_done()
-            return 1 + self.increment_counter()
-        else:
-            self.counter.put(lastcount)
-            return 0
-
+    # complex data types: iterated types
+    def Str(self, value:str):
+        return self.i8(len(value)) + value.encode()
+    def List(self, value:list):
+        return self.i8(len(value)) + b"".join(self.convert(item) for item in value)
+    def Dict(self, value:dict):
+        return self.i8(len(value)) + b"".join(self.convert(key) + self.convert(value) for key, value in value.items())
+    def Set(self, value:set):
+        return self.i8(len(value)) + b"".join(self.convert(item) for item in value)

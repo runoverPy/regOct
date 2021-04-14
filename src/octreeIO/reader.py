@@ -10,7 +10,6 @@ def load(file_name):
     out = Octree(lvl)
     with BuilderHelper(out) as bh:
         for cmd, value in cmdstream:
-            print(cmd)
             getattr(bh, cmd)(value)
     return out        
 
