@@ -8,7 +8,7 @@ an implementation of an ordered octree system
 3. The Octree is a self-contained system. All information regarding the octree is stored in the file.
 
 ## File Format (.onc)
-The **.onc** (octree encrypted code) format is the file format of choice for this code. In its current state data is stored as plain text and, as such, can be read, understood and written by regular mortals. This is soon to change, it will soon be stored in binary.
+The **.onc** (octree encrypted code) binary format is the file format of choice for this code. A octree can be loaded and saved to and from files using the ```python .octreeIO ``` module.
 
 ### Important Notices:
 1. Because the value contained in the octree is type-independant, what it represents is entirely dependant on the software interpreting it, so caution must be applied when loading a file.
