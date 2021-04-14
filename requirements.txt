@@ -1,3 +1,6 @@
 pyGLM
-pygame
 keyboard
+glfw
+PyOpenGL
+numpy
+PyOpenGL-accelerate
