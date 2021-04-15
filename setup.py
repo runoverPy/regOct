@@ -6,12 +6,13 @@ desc = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="regOct",
-    version='0.0.1.dev1',
+    version='0.1.0.dev5',
     description="A module implementing octrees for python",
     long_description=desc,
     long_description_content_type='text/markdown',
     url='https://github.com/runoverPy/regOct',
     author="runover",
+    license="MIT",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -22,12 +23,14 @@ setup(
         "Operating System :: OS Independent",
     ],
     packages=find_packages(where="src"),
+    package_dir = {"":"src"},
     python_requires=">=3, <4",
     install_requires=[
         "pyGLM",
         "keyboard",
         "glfw",
         "PyOpenGL",
-        "numpy"
+        "numpy",
+        "PyOpenGL-accelerate"
     ],
 )

@@ -3,3 +3,4 @@ keyboard
 glfw
 PyOpenGL
 numpy
+PyOpenGL-accelerate
