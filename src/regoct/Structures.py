@@ -1,7 +1,6 @@
 import math, sys, time
 from enum import Enum, auto
 from .Util import Geometry, SubdivisionIndexError, InvalidRequestCallError, UnboundVartagError, AttributeDesynchronisationError, ToasterBathError, root_key, header_key
-from .Reader import Reader
 from abc import ABC, abstractmethod
 import warnings
 from typing import final
@@ -55,6 +54,9 @@ class Leaf(_OctreeInternal):
         next_coords = Geometry.coord_addition(Geometry.coords_from_index(self.pos, self.level), coords)
         return [{"coords":next_coords, "level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
 
+    def list_all(self):
+        yield {"level":self.level, "pos":self.pos, "type":self.__class__, "data":self.value}
+
     # Construction Methods
     def subdivide(self, truncate=False):
         if truncate:
@@ -85,7 +87,7 @@ class Leaf(_OctreeInternal):
             raise StopIteration
         else:
             self.has_returned = True
-            return [{"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
+            return {"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}
 
 class Node(_OctreeInternal):
     def __init__(self, level, pos, master, template=None):
@@ -134,6 +136,11 @@ class Node(_OctreeInternal):
             out.extend(i.map(next_coords))
         return out
 
+    def list_all(self):
+        yield {"level":self.level, "pos":self.pos, "type":self.__class__}
+        for member in self.contents:
+            yield from member.list_all()
+
     # Construction Methods
     def replaceslot(self, pos, new):
         self.contents[pos] = new
@@ -165,60 +172,6 @@ class Node(_OctreeInternal):
             out = next(self.reading)
         return out
 
-class Builder(_OctreeInternal):
-    def __init__(self, level, pos, master):
-        super().__init__(level, pos, master)
-        self.creating_index = 0
-        self.end_of_line = True
-        self.artefact = []
-
-
-    @classmethod
-    def load(cls, octree, file_name):
-        obj = cls(0, 0, octree)        
-        Reader.entangle(obj, file_name).run()
-        return obj
-
-    def header(self, data):
-        if data[0] != "0.0.2":
-            warnings.warn("The ONC version of the file has been outdated.")
-            if (output := input("UPDATE FILE: (y/n)\n"))[0] == "y":
-                print("its definitely updating rn")
-            elif output[0] == "n":
-                print("your loss")
-                time.sleep(1)
-                raise ToasterBathError()
-        self.master.level = data[1]
-        self.level = data[1]
-
-    def create_branch(self, args):
-        if self.end_of_line == False:
-            self.artefact[self.creating_index].create_branch(args)
-        else:
-            self.artefact.append(Builder(self.level -1, self.creating_index, self))
-            self.end_of_line = False
-
-    def fill_branch(self, data):
-        if self.end_of_line == False:
-            self.artefact[self.creating_index].fill_branch(data)
-        else:
-            self.artefact.append(Leaf(self.level -1, self.creating_index, self, data))
-            self.creating_index += 1
-
-    def close_branch(self, args):
-        if self.end_of_line == False:
-            if self.artefact[self.creating_index].close_branch(args):
-                self.creating_index += 1
-                self.end_of_line = True
-            return False
-        else:
-            self.contents = self.artefact
-            self.__class__ = Node
-            del self.artefact
-            del self.end_of_line
-            del self.creating_index
-            return True
-
 class Octree:
     """The Class with which octrees will be created.
     It is the Root of the Octree.
@@ -242,12 +195,8 @@ class Octree:
     def map(self):
         return self.octree.map()
 
-    # Load From File
-    @classmethod
-    def load(cls, file_name):
-        out = cls(None)
-        out.octree = Builder.load(out, file_name)
-        return out
+    def list_all(self):
+        return self.octree.list_all()
 
     # Construction methods
     @classmethod
@@ -293,6 +242,8 @@ class Octree:
         return next(self.iter)
 
 class Addon(ABC):
+    """this class has not been implemented yet. In the future, you will be able to use octree addons for automating tasks. probably."""
+    
     def __init__(self):
         self.card = "addon_base"
 
