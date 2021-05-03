@@ -19,11 +19,9 @@ def scanner(octree):
             yield Command.create_node()
         
         yield Command.fill_node(data["data"])
+        lastlevel += increment_counter()
 
-        for i in range(increment_counter()):
-            lastlevel += 1
-            yield Command.close_node() 
-
+        
     def increment_counter():
         if counter.empty():
             return 0 
@@ -40,8 +38,17 @@ def scanner(octree):
     counter = LifoQueue()
     yield Command.header()
     yield Command.seed(octree.level)
+    command:Command = None
     for data in iter(octree):
-        yield from process(data)
+        for nxtcmd in process(data):
+            if command is None:
+                command = nxtcmd
+            elif nxtcmd == command:
+                command.count += 1
+            else:
+                yield command
+                command = nxtcmd
+    yield command
 
 class Command:
     singletons = {
@@ -70,7 +77,7 @@ class Command:
         return False
 
     @classmethod
-    def header(cls, version="0.0.1"):
+    def header(cls, version="0.0.2"):
         return cls("header", version)
 
     @classmethod
@@ -88,15 +95,11 @@ class Command:
     def create_node(cls):
         return cls("crnd")
 
-    @classmethod
-    def close_node(cls):
-        return cls("clnd")
-    
 class Compiler:
     conversion = {
         'header':b'\x00', 'seed':b'\x01', 
 
-        'crnd':b'\x04', 'nxnd':b'\x05', 'clnd':b'\x06', 'flnd':b'\x07', 
+        'crnd':b'\x04', 'flnd':b'\x07', 
         'nlnd':b'\x08', 'vdnd':b'\x09', 'fsnd':b'\x0a', 'trnd':b'\x0b', 
 
           'i8':b'\x20',  'i16':b'\x21',  'i32':b'\x22',  'i64':b'\x23', 
@@ -105,7 +108,7 @@ class Compiler:
          'Str':b'\x40', 'List':b'\x41', 'Dict':b'\x42',  'Set':b'\x43'
     }
     pystandard = {
-        int: "i16", 
+        int: "i32", 
         float: "f64",
         complex: "c64",
         str: "Str",
@@ -126,22 +129,18 @@ class Compiler:
         return b"".join([self.conversion[command.cmd], self.convert(command.value)])
     
     def crnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
-    def nxnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
-    def clnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
     def flnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count), command.value])
+        return b"".join([self.conversion[command.cmd], self.ui8(command.count), command.value])
 
     def nlnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
     def vdnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
     def fsnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
     def trnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.i8(command.count)])
+        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
     
     # data types: return a value
     # basic data types
@@ -175,10 +174,10 @@ class Compiler:
 
     # complex data types: iterated types
     def Str(self, value:str):
-        return self.i8(len(value)) + value.encode()
+        return self.ui16(len(value)) + value.encode()
     def List(self, value:list):
-        return self.i8(len(value)) + b"".join(self.convert(item) for item in value)
+        return self.ui16(len(value)) + b"".join(self.convert(item) for item in value)
     def Dict(self, value:dict):
-        return self.i8(len(value)) + b"".join(self.convert(key) + self.convert(value) for key, value in value.items())
+        return self.ui16(len(value)) + b"".join(self.convert(key) + self.convert(value) for key, value in value.items())
     def Set(self, value:set):
-        return self.i8(len(value)) + b"".join(self.convert(item) for item in value)
+        return self.ui16(len(value)) + b"".join(self.convert(item) for item in value)

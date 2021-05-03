@@ -22,20 +22,23 @@ class Builder:
         self.end_of_line = True
         self.artefact = []
 
-    def create_node(self, args):
+    def create_node(self, *args):
         if self.end_of_line == False:
-            self.artefact[self.creating_index].create_node(args)
+            self.artefact[self.creating_index].create_node()
         else:
             self.artefact.append(Builder(self.level -1, self.creating_index, self))
             self.end_of_line = False
 
-    def close_node(self, args):
+    def fill_node(self, data):
         if self.end_of_line == False:
-            if self.artefact[self.creating_index].close_node(args):
+            if self.artefact[self.creating_index].fill_node(data):
                 self.creating_index += 1
                 self.end_of_line = True
-            return False
         else:
+            self.artefact.append(Leaf(self.level -1, self.creating_index, self, data))
+            self.creating_index += 1
+        
+        if self.creating_index == 8:
             self.contents = self.artefact
             self.__class__ = Node
             del self.artefact
@@ -43,17 +46,17 @@ class Builder:
             del self.creating_index
             return True
 
-    def fill_node(self, data):
-        if self.end_of_line == False:
-            self.artefact[self.creating_index].fill_node(data)
-        else:
-            self.artefact.append(Leaf(self.level -1, self.creating_index, self, data))
-            self.creating_index += 1
-
 class BuilderHelper(Builder):
     def __init__(self, octree):
         self.octree = octree
         super().__init__(octree.level+1, 0, None)
+
+    def create_node(self, *args):
+        if self.end_of_line == False:
+            self.artefact[self.creating_index].create_node()
+        else:
+            self.artefact.append(Builder(self.level -1, self.creating_index, self.octree))
+            self.end_of_line = False
 
     def __enter__(self):
         return self
@@ -70,8 +73,6 @@ class Command:
     commands = {
         "seed":["seed"],
         "crnd":["create_node"],
-        "nxnd":["close_node", "create_node"],
-        "clnd":["close_node"],
         "flnd":["fill_node"]
     }
     
@@ -79,6 +80,10 @@ class Command:
         self.command = name
         self.count = count
         self.value = value
+
+    @staticmethod
+    def decode(key):
+        pass
 
     def process(self):
         out = []
@@ -90,8 +95,9 @@ class Command:
 class Parser:
     commands = {
         b"\x00":"header", b"\x01":"seed",
-        b"\x04":"crnd", b"\x05":"nxnd", b"\x06":"clnd", b"\x07":"flnd", 
+        b"\x04":"crnd", b"\x07":"flnd", 
         b"\x08":"nlnd", b"\x09":"vdnd", b"\x0a":"fsnd", b"\x0b":"trnd",
+        
         b"\x20":  "i8", b"\x21": "i16", b"\x22": "i32", b"\x23": "i64",
         b"\x24": "ui8", b"\x25":"ui16", b"\x26":"ui32", b"\x27":"ui64",
         b"\x28": "f32", b"\x29": "f64", b"\x2a": "c64", b"\x2b":"c128",
@@ -118,30 +124,30 @@ class Parser:
     # command structs: return a command object
 
     def header(self):
-        if (fileversion := self.run_next()) != "0.0.1":
-            raise VersionError(fileversion, "0.0.1")
+        if (fileversion := self.run_next()) != "0.0.2":
+            raise VersionError(fileversion, "0.0.2")
         return Command("header", 1, fileversion)
     
     def seed(self):
         return Command("seed", value=self.run_next())
     
     def crnd(self):
-        return Command("crnd", self.i8())
+        return Command("crnd", self.ui8())
     def nxnd(self):
-        return Command("nxnd", self.i8())
+        return Command("nxnd", self.ui8())
     def clnd(self):
-        return Command("clnd", self.i8())
+        return Command("clnd", self.ui8())
     def flnd(self):
-        return Command("flnd", self.i8(), self.run_next())
+        return Command("flnd", self.ui8(), self.run_next())
 
     def nlnd(self):
-        return Command("flnd", self.i8(), None)
+        return Command("flnd", self.ui8(), None)
     def vdnd(self):
-        return Command("flnd", self.i8(), Ellipsis)
+        return Command("flnd", self.ui8(), Ellipsis)
     def fsnd(self):
-        return Command("flnd", self.i8(), False)
+        return Command("flnd", self.ui8(), False)
     def trnd(self):
-        return Command("flnd", self.i8(), True)
+        return Command("flnd", self.ui8(), True)
     
     # data types: return a value
     # basic data types
@@ -176,13 +182,13 @@ class Parser:
     # complex data types: iterated types
 
     def Str(self):
-        return self.io.read(self.i8()).decode()
+        return self.io.read(self.ui16()).decode()
     def List(self):
-        return list(self.run_next() for i in range(self.i8()))
+        return list(self.run_next() for i in range(self.ui16()))
     def Dict(self):
-        return dict((self.run_next(), self.run_next()) for i in range(self.i8()))
+        return dict((self.run_next(), self.run_next()) for i in range(self.ui16()))
     def Set(self):
-        return set(self.run_next() for i in range(self.i8()))
+        return set(self.run_next() for i in range(self.ui16()))
 
     def Srct(self):
         form = self.Str()

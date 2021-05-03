@@ -1,101 +1,86 @@
-import math, sys
+import math, sys, struct
 import glfw
 import OpenGL.GL as gl
 import numpy
 import glm
-from queue import Queue
+import ctypes
+
+cs = """
+    #version 430 core
+
+    uniform uint vertexcount;
+
+    struct DrawCommand {
+        uint count;
+        uint instanceCount;
+        uint firstIndex;
+        uint baseVertex;
+        uint baseInstance;
+    };
+
+    layout(local_size_x = 1) in;
+
+    layout(std140, binding = 0) uniform barrierData {
+        vec3 direction;
+        vec3 barrier;
+    };
+
+    layout(std140, binding = 1) buffer modelMatrix {
+        mat4 model[];
+    };
+
+    layout(std430, binding = 2) buffer drawIndirectBuffer {
+        DrawCommand commands[];
+    };
+
+
+    void main(){
+        const uint index = gl_WorkGroupID.x; // this shader may only be dispatched in the x dimension
+
+        bool draw = dot((model[index] * vec4(0.5, 0.5, 0.5, 1.0)).xyz - barrier, direction) > 0.0;
+
+        commands[index] = DrawCommand(
+            vertexcount,
+            draw ? 1 : 0,
+            0,
+            0,
+            index
+        );        
+    }
+    """
 
 vs = """
-#version 400 core
-layout(location = 0) in vec3 vertexPosition_modelspace;
+    #version 430 core
+    
+    layout(location = 0) in vec3 vertexPosition_modelspace;
+    layout(location = 2) in mat4 model;
 
-uniform vec3 staticcolor;
-uniform mat4 fullmatrix;
+    layout(std140, binding = 3) uniform matricies {
+        mat4 projection;
+        mat4 view;
+    };
 
-out vec3 fragmentColor;
-  
-void main(){
-  gl_Position = fullmatrix * vec4(vertexPosition_modelspace, 1);
-  fragmentColor = staticcolor;
-}
-"""
+    uniform vec3 staticcolor;
+
+    out vec3 fragmentColor;
+    
+    void main(){
+        mat4 fullMatrix = projection * view * model;
+        gl_Position = fullMatrix * vec4(vertexPosition_modelspace, 1.0);
+        fragmentColor = staticcolor;
+    }
+    """
 
 fs = """
-#version 400 core
-in vec3 fragmentColor;
+    #version 430 core
+    in vec3 fragmentColor;
 
-out vec3 color;
+    out vec3 color;
 
-void main(){
-  color = fragmentColor;
-}
-"""
-
-cube_verticies = [ 
-        1.0, 1.0, 1.0,
-        1.0, 0.0, 0.0,
-        1.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
-        1.0, 0.0, 1.0,
-        1.0, 1.0, 1.0,
-        0.0, 1.0, 0.0,
-        0.0, 1.0, 1.0,
-        1.0, 1.0, 1.0,
-        0.0, 0.0, 1.0,
-        1.0, 1.0, 1.0,
-        0.0, 1.0, 1.0,
-        1.0, 1.0, 1.0,
-        1.0, 0.0, 1.0,
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        1.0, 1.0, 1.0,
-        1.0, 1.0, 0.0,
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        1.0, 1.0, 0.0,
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0,
-        0.0, 1.0, 1.0,
-        0.0, 1.0, 1.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0,
-        1.0, 0.0, 1.0,
-        0.0, 0.0, 1.0,
-        0.0, 0.0, 0.0,
-        1.0, 0.0, 0.0,
-        1.0, 0.0, 1.0,
-        0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        1.0, 0.0, 0.0
-        ]
-
-frame_verticies = [
-        0.0, 0.0, 0.0,
-        0.0, 0.0, 1.0,
-        0.0, 0.0, 1.0, 
-        0.0, 1.0, 1.0,
-        0.0, 0.0, 1.0, 
-        1.0, 0.0, 1.0, 
-        1.0, 1.0, 0.0,
-        1.0, 1.0, 1.0,
-        0.0, 0.0, 0.0, 
-        0.0, 1.0, 0.0,
-        0.0, 1.0, 0.0, 
-        0.0, 1.0, 1.0, 
-        0.0, 1.0, 0.0,
-        1.0, 1.0, 0.0,
-        1.0, 0.0, 1.0, 
-        1.0, 1.0, 1.0,
-        0.0, 0.0, 0.0, 
-        1.0, 0.0, 0.0,
-        1.0, 0.0, 0.0, 
-        1.0, 1.0, 0.0, 
-        1.0, 0.0, 0.0, 
-        1.0, 0.0, 1.0,
-        0.0, 1.0, 1.0, 
-        1.0, 1.0, 1.0,
-        ]
+    void main(){
+        color = fragmentColor;
+    }
+    """
 
 indexed_vertecies = [
         0.0, 0.0, 0.0,
@@ -120,7 +105,7 @@ cube_indicies = [
         3, 2, 0,
         0, 5, 1,
         0, 4, 5,
-        0, 2, 1
+        0, 2, 4
         ]
 
 frame_indicies = [
@@ -138,46 +123,51 @@ frame_indicies = [
         3, 7
         ]
 
+
+def compile_compute_shader(cs):
+    compute_shader_id = gl.glCreateShader(gl.GL_COMPUTE_SHADER)
+
+    gl.glShaderSource(compute_shader_id, cs)
+    gl.glCompileShader(compute_shader_id)
+    if not gl.glGetShaderiv(compute_shader_id, gl.GL_COMPILE_STATUS):
+        print("compute shader compile error:\n\t", "\n\t".join(gl.glGetShaderInfoLog(compute_shader_id).decode().split("\n")), sep="")
+
+    program_id = gl.glCreateProgram()
+    gl.glAttachShader(program_id, compute_shader_id)
+
+    gl.glLinkProgram(program_id)
+    if not gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS):
+        print("shader link error:\n\t", "\n\t".join(gl.glGetProgramInfoLog(program_id).decode().split("\n")), sep="")
+        sys.exit()
+
+    gl.glDetachShader(program_id, compute_shader_id)
+    gl.glDeleteShader(compute_shader_id)
+
+    return program_id
+
+
 def load_shaders(vs, fs):
     vertex_shader_id = gl.glCreateShader(gl.GL_VERTEX_SHADER)
     fragment_shader_id = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
 
-    result = gl.GL_FALSE
-    info_log_length = 0
-
     gl.glShaderSource(vertex_shader_id, vs)
     gl.glCompileShader(vertex_shader_id)
-
-    gl.glGetShaderiv(vertex_shader_id, gl.GL_COMPILE_STATUS, result)
-    gl.glGetShaderiv(vertex_shader_id, gl.GL_INFO_LOG_LENGTH, info_log_length)
-    if info_log_length > 0:
-        vertex_shader_error_message  = []
-        gl.glGetShaderInfoLog(vertex_shader_id, info_log_length, None, vertex_shader_error_message)
-        print(vertex_shader_error_message)
+    if not gl.glGetShaderiv(vertex_shader_id, gl.GL_COMPILE_STATUS):
+        print("vertex shader compile error:\n\t", "\n\t".join(gl.glGetShaderInfoLog(vertex_shader_id).decode().split("\n")), sep="")
 
     gl.glShaderSource(fragment_shader_id, fs)
     gl.glCompileShader(fragment_shader_id)
-
-    gl.glGetShaderiv(fragment_shader_id, gl.GL_COMPILE_STATUS, result)
-    gl.glGetShaderiv(fragment_shader_id, gl.GL_INFO_LOG_LENGTH, info_log_length)
-    if info_log_length > 0:
-        fragment_shader_error_message  = []
-        gl.glGetShaderInfoLog(fragment_shader_id, info_log_length, None, fragment_shader_error_message)
-        print(fragment_shader_error_message)
+    if not gl.glGetShaderiv(fragment_shader_id, gl.GL_COMPILE_STATUS):
+        print("fragment shader compile error:\n\t", "\n\t".join(gl.glGetShaderInfoLog(fragment_shader_id).decode().split("\n")), sep="")
 
     program_id = gl.glCreateProgram()
     gl.glAttachShader(program_id, vertex_shader_id)
     gl.glAttachShader(program_id, fragment_shader_id)
 
     gl.glLinkProgram(program_id)
-    print(gl.glGetProgramInfoLog(program_id))
-
-    gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS, result)
-    gl.glGetProgramiv(program_id, gl.GL_INFO_LOG_LENGTH, info_log_length)
-    if info_log_length > 0:
-        program_error_message  = []
-        gl.glGetProgramInfoLog(program_id, info_log_length, None, program_error_message)
-        print(program_error_message)
+    if not gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS):
+        print("shader link error:\n\t", "\n\t".join(gl.glGetProgramInfoLog(program_id).decode().split("\n")), sep="")
+        sys.exit()
 
     gl.glDetachShader(program_id, vertex_shader_id)
     gl.glDetachShader(program_id, fragment_shader_id)
@@ -187,17 +177,17 @@ def load_shaders(vs, fs):
 
     return program_id
 
+
 class Display:
     def __init__(self, octree):
         self.octree = octree
-        self.octree_data = []
         self.window_dims = [1280, 960]
         
         self.fulcrum = glm.vec3(2**(octree.level-1))  # orbit center of camera
         self.direction = glm.vec3(0)
         self.position = glm.vec3(0)
-        self.dist = 8
-        self.barrier = 7
+        self.dist = 2**(octree.level+1)
+        self.barrier = 0
         
         self.h_angle = math.pi/4
         self.v_angle = 0 # -1*math.pi/8
@@ -208,12 +198,12 @@ class Display:
         self.speed = 1.0
         self.mouse_speed = 0.5
 
-        self.projectionmatrix = glm.perspective(glm.radians(60.0), 1280/960, 0.1, 100.0)
+        self.projectionmatrix = glm.perspective(glm.radians(60.0), 3/2, 0.1, 10000.0)
     
         if not glfw.init():
             print(glfw.get_error())
             return
-        
+
         self.last_time = glfw.get_time()
 
         glfw.window_hint(glfw.SAMPLES, 4)
@@ -224,122 +214,144 @@ class Display:
             return
 
         glfw.make_context_current(self.window)
+        glfw.set_scroll_callback(self.window, self.scroll)
         gl.glClearColor(0.0, 0.6, 1.0, 0.0)
 
+        self.compute_id = compile_compute_shader(cs)
         self.program_id = load_shaders(vs, fs)
         gl.glUseProgram(self.program_id)
         
         self.color_id = gl.glGetUniformLocation(self.program_id, "staticcolor")
-        self.fullmatrix_id = gl.glGetUniformLocation(self.program_id, "fullmatrix")
+        self.vertex_count_id = gl.glGetUniformLocation(self.compute_id, "vertexcount")
 
         self.vertex_array_id = gl.glGenVertexArrays(1)
         gl.glBindVertexArray(self.vertex_array_id)
 
-        # self.vertex_buffer = gl.glGenBuffers(1)
-        # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertex_buffer)
-        # indexed_vertex_data = numpy.array(indexed_vertecies, numpy.float32)
-        # gl.glBufferData(gl.GL_ARRAY_BUFFER, len(indexed_vertex_data)*4, indexed_vertex_data, gl.GL_STATIC_DRAW)
+        # create & load indexed vertex buffer
+        self.vertex_buffer = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertex_buffer)
+        indexed_vertex_data = numpy.array(indexed_vertecies, numpy.float32)
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, len(indexed_vertex_data)*4, indexed_vertex_data, gl.GL_STATIC_DRAW)
 
-        # self.cube_index_buffer = gl.glGenBuffers(1)
-        # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.cube_index_buffer)
-        # cube_index_data = numpy.array(cube_indicies, numpy.uint16)
-        # gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, len(cube_index_data)*2, cube_index_data, gl.GL_STATIC_DRAW)
+        # create & store cube index buffer
+        self.cube_index_buffer = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.cube_index_buffer)
+        cube_index_data = numpy.array(cube_indicies, numpy.uint16)
+        gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, len(cube_index_data)*2, cube_index_data, gl.GL_STATIC_DRAW)
 
-        # self.frame_index_buffer = gl.glGenBuffers(1)
-        # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.frame_index_buffer)
-        # frame_index_data = numpy.array(frame_indicies, numpy.uint16)
-        # gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, len(frame_index_data)*2, frame_index_data, gl.GL_STATIC_DRAW)
+        # create & store frame index buffer
+        self.frame_index_buffer = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.frame_index_buffer)
+        frame_index_data = numpy.array(frame_indicies, numpy.uint16)
+        gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, len(frame_index_data)*2, frame_index_data, gl.GL_STATIC_DRAW)
 
-        # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, 0)
+    
+        # create & partially load transformation matricies 
+        self.uniform_matricies = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_UNIFORM_BUFFER, self.uniform_matricies)
+        gl.glBufferData(gl.GL_UNIFORM_BUFFER, 2 * glm.sizeof(glm.mat4), None, gl.GL_STATIC_DRAW)
+        gl.glBufferSubData(gl.GL_UNIFORM_BUFFER, 0, glm.sizeof(glm.mat4), glm.value_ptr(self.projectionmatrix))
+        
+        # create & reserve space for barrier data
+        self.barrier_vectors = gl.glGenBuffers(1)
+        gl.glBindBuffer(gl.GL_UNIFORM_BUFFER, self.barrier_vectors)
+        gl.glBufferData(gl.GL_UNIFORM_BUFFER, 2 * glm.sizeof(glm.vec4), None, gl.GL_STATIC_DRAW)
 
-        self.cube_vertex_buffer = gl.glGenBuffers(1)
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.cube_vertex_buffer)
-        cube_vertex_data = numpy.array(cube_verticies, numpy.float32)
-        gl.glBufferData(gl.GL_ARRAY_BUFFER, len(cube_vertex_data)*4, cube_vertex_data, gl.GL_STATIC_DRAW)
-
-        self.frame_vertex_buffer = gl.glGenBuffers(1)
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.frame_vertex_buffer)
-        frame_vertex_data = numpy.array(frame_verticies, numpy.float32)
-        gl.glBufferData(gl.GL_ARRAY_BUFFER, len(frame_vertex_data)*4, frame_vertex_data, gl.GL_STATIC_DRAW)
+        # create indirect & matrix buffers
+        self.matrix_buffer, self.indirect_buffer = gl.glGenBuffers(2)
 
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, 0)
+        gl.glBindBuffer(gl.GL_UNIFORM_BUFFER, 0)
 
         gl.glEnable(gl.GL_POLYGON_OFFSET_FILL)
-        gl.glPolygonOffset(1, -1)
-        gl.glLineWidth(2)
+        gl.glPolygonOffset(1, 0)
+        gl.glLineWidth(1)
         gl.glEnable(gl.GL_BLEND)
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glDepthFunc(gl.GL_LEQUAL)
         gl.glEnable(gl.GL_CULL_FACE)
 
+
     def poll_octree_data(self):
         tmp = self.octree.map()
-        self.octree_data = []
+        matricies = []
         for line in tmp:
-            if line["void"]:
-                color = glm.vec3(0)
-            else:
-                color = glm.vec3(0, 1, 0)
-            self.octree_data.append({"pos":line["coords"], "level":line["level"], "fill":not line["void"], "framecolor":color})
+            if not line["void"]:
+                matricies.append(glm.translate(glm.mat4(1), glm.vec3(line["coords"])) * glm.scale(glm.mat4(1), glm.vec3(2**line["level"])))
+        
+        self.cube_count = len(matricies)
+        matrix_array = glm.array(matricies)
+
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.matrix_buffer)
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, matrix_array.nbytes, matrix_array.ptr, gl.GL_STATIC_DRAW)
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+
+        gl.glBindBuffer(gl.GL_DRAW_INDIRECT_BUFFER, self.indirect_buffer)
+        gl.glBufferStorage(gl.GL_DRAW_INDIRECT_BUFFER, 32 * len(matricies), None, gl.GL_MAP_READ_BIT | gl.GL_MAP_WRITE_BIT)
+        gl.glBindBuffer(gl.GL_DRAW_INDIRECT_BUFFER, 0)
+
 
     def draw(self):
+        # Update UBO with new view matrix
+        gl.glBindBuffer(gl.GL_UNIFORM_BUFFER, self.uniform_matricies)
+        gl.glBufferSubData(gl.GL_UNIFORM_BUFFER, glm.sizeof(glm.mat4), glm.sizeof(glm.mat4), glm.value_ptr(self.probeKeyBoard()))
+
+        # Update UBO with barrier data
+        gl.glBindBuffer(gl.GL_UNIFORM_BUFFER, self.barrier_vectors)
+        gl.glBufferSubData(gl.GL_UNIFORM_BUFFER, 0, glm.sizeof(glm.vec3), glm.value_ptr(self.direction))
+        gl.glBufferSubData(gl.GL_UNIFORM_BUFFER, glm.sizeof(glm.vec4), glm.sizeof(glm.vec3), glm.value_ptr(self.barrier*self.direction + self.position))
+        gl.glBindBuffer(gl.GL_UNIFORM_BUFFER, 0)
+
+        # # Compute Commands
+        gl.glUseProgram(self.compute_id)
+
+        gl.glUniform1ui(self.vertex_count_id, len(cube_indicies))
+        gl.glBindBufferBase(gl.GL_UNIFORM_BUFFER, 0, self.barrier_vectors)
+        gl.glBindBufferBase(gl.GL_SHADER_STORAGE_BUFFER, 1, self.matrix_buffer)
+        gl.glBindBufferBase(gl.GL_SHADER_STORAGE_BUFFER, 2, self.indirect_buffer)
+
+        gl.glDispatchCompute(self.cube_count, 1, 1)
+        gl.glMemoryBarrier(gl.GL_COMMAND_BARRIER_BIT | gl.GL_SHADER_STORAGE_BARRIER_BIT)
+
         gl.glUseProgram(self.program_id)
+                
+        # Bind VBO with verticies
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertex_buffer)
+        gl.glEnableVertexAttribArray(0)
+        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
+        # Bind VBO with matricies and set attrib pointers
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.matrix_buffer)
+    
+        for i in range(4):
+            gl.glEnableVertexAttribArray(2 + i)
+            gl.glVertexAttribPointer(2 + i, 4, gl.GL_FLOAT, gl.GL_FALSE, glm.sizeof(glm.mat4), ctypes.c_void_p(glm.sizeof(glm.vec4) * i))
+            gl.glVertexAttribDivisor(2 + i, 1)
+
+        gl.glBindBufferBase(gl.GL_UNIFORM_BUFFER, 3, self.uniform_matricies)
+        gl.glBindBuffer(gl.GL_DRAW_INDIRECT_BUFFER, self.indirect_buffer)
+
+        # print(self.cube_count)
+        # for i in range(self.cube_count):
+        #     print(gl.glGetBufferSubData(gl.GL_DRAW_INDIRECT_BUFFER, 20 * i, 20))
         
-        viewmatrix = self.probeKeyBoard() # called once each draw call
+        # sys.exit()
+    
+        # for i in [0, 2, 3, 4, 5]:
+        #     print(gl.glGetVertexAttribfv(i, gl.GL_VERTEX_ATTRIB_RELATIVE_OFFSET))
+    
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.cube_index_buffer)
+        gl.glUniform3fv(self.color_id, 1, glm.value_ptr(self.fill_color))
+        gl.glMultiDrawElementsIndirect(gl.GL_TRIANGLES, gl.GL_UNSIGNED_SHORT, None, self.cube_count, 20)
         
-        # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vertex_buffer)
-        # gl.glEnableVertexAttribArray(0)
-        # gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.frame_index_buffer)
+        gl.glUniform3fv(self.color_id, 1, glm.value_ptr(glm.vec3(1, 0, 0)))
+        gl.glMultiDrawElementsIndirect(gl.GL_LINES, gl.GL_UNSIGNED_SHORT, None, self.cube_count, 20)
 
-        barrier_vector = self.barrier*self.direction
-
-        for cube in self.octree_data:
-            
-            modelmatrix = glm.translate(glm.mat4(1), glm.vec3(cube["pos"])) * glm.scale(glm.mat4(1), glm.vec3(2**cube["level"])) 
-            fullmatrix = self.projectionmatrix * viewmatrix * modelmatrix
-            gl.glUniformMatrix4fv(self.fullmatrix_id, 1, gl.GL_FALSE, glm.value_ptr(fullmatrix)) # called once each cube
-                            
-            if glm.dot(glm.vec3(cube["pos"]) + glm.vec3(2**(cube["level"]-1)) - (self.position + barrier_vector), barrier_vector) < 0:
-                continue
-            
-            if cube["fill"]:
-
-                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.cube_vertex_buffer)
-                gl.glEnableVertexAttribArray(0)
-                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
-
-                gl.glUniform3fv(self.color_id, 1, glm.value_ptr(self.fill_color))
-                gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(cube_verticies))
-
-                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.frame_vertex_buffer)
-                gl.glEnableVertexAttribArray(0)
-                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
-
-                gl.glUniform3fv(self.color_id, 1, glm.value_ptr(glm.vec3(1, 0, 0)))
-                gl.glDrawArrays(gl.GL_LINES, 0, len(frame_verticies))
-
-            else:
-                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.frame_vertex_buffer)
-                gl.glEnableVertexAttribArray(0)
-                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
-
-                gl.glUniform3fv(self.color_id, 1, glm.value_ptr(glm.vec3(0, 0, 1)))
-                gl.glDrawArrays(gl.GL_LINES, 0, len(frame_verticies))
-
-            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-
-            # if cube["fill"]:
-            #     gl.glUniform3fv(self.color_id, 1, glm.value_ptr(self.fill_color))
-            #     gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.cube_index_buffer)
-            #     gl.glDrawElements(gl.GL_TRIANGLES, len(cube_indicies), gl.GL_UNSIGNED_INT, None)
-
-            # gl.glUniform3fv(self.color_id, 1, glm.value_ptr(cube["framecolor"]))
-            # gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.frame_index_buffer)
-            # gl.glDrawElements(gl.GL_LINES, len(frame_indicies), gl.GL_UNSIGNED_INT, None)
-        
-        gl.glDisableVertexAttribArray(0)
-
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, 0)
+        gl.glBindBuffer(gl.GL_DRAW_INDIRECT_BUFFER, 0)
 
 
     def main(self):
@@ -353,35 +365,48 @@ class Display:
 
         glfw.terminate()
 
+
+    def scroll(self, window, xoffset, yoffset):
+        if glfw.get_key(self.window, glfw.KEY_LEFT_ALT) == glfw.PRESS:
+            self.barrier = (self.barrier + yoffset) if self.barrier >= 0 else 0
+        else:
+            self.dist = (self.dist + yoffset) if self.dist >= 0 else 0
+
+
+    def on_key(self, window, key, scancode, action, mods):...
+
+
     def probeKeyBoard(self):  
         """returns updated view matrix"""
         self.current_time = glfw.get_time()
         self.delta_time = self.current_time - self.last_time
         self.last_time = self.current_time
 
-        if(glfw.get_key(self.window, glfw.KEY_W) == glfw.PRESS):
-            self.v_angle -= self.delta_time * self.speed
+        print("\r                                                 \r", round(self.delta_time, 5), "\t|", 1/self.delta_time, sep="", end="")
 
-        if(glfw.get_key(self.window, glfw.KEY_S) == glfw.PRESS):
-            self.v_angle += self.delta_time * self.speed
+        if glfw.get_key(self.window, glfw.KEY_W) == glfw.PRESS:
+            self.v_angle -= (self.delta_time * self.speed) if (self.v_angle > math.pi/-2) else 0
 
-        if(glfw.get_key(self.window, glfw.KEY_D) == glfw.PRESS):
+        if glfw.get_key(self.window, glfw.KEY_S) == glfw.PRESS:
+            self.v_angle += (self.delta_time * self.speed) if (self.v_angle < math.pi/2) else 0
+
+        if glfw.get_key(self.window, glfw.KEY_A) == glfw.PRESS:
             self.h_angle += self.delta_time * self.speed
 
-        if(glfw.get_key(self.window, glfw.KEY_A) == glfw.PRESS):
+        if glfw.get_key(self.window, glfw.KEY_D) == glfw.PRESS:
             self.h_angle -= self.delta_time * self.speed
-
-        self.h_angle %= math.pi*2
-        self.v_angle %= math.pi*2
 
         self.direction = glm.vec3(
                             math.cos(self.v_angle) * math.sin(self.h_angle),
                             math.sin(self.v_angle),
                             math.cos(self.v_angle) * math.cos(self.h_angle))
-        
-        self.position = self.fulcrum - self.dist * self.direction
 
+        right = glm.vec3(
+                        math.sin(self.h_angle - math.pi/2),
+                        0,
+                        math.cos(self.h_angle - math.pi/2))
 
-        right = glm.vec3(math.sin(self.h_angle - math.pi/2), 0, math.cos(self.h_angle - math.pi/2))
         up = glm.cross(right, self.direction)
+
+        self.position = self.fulcrum - self.dist * self.direction
         return glm.lookAt(self.position, self.fulcrum, up)

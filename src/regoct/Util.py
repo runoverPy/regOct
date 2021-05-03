@@ -46,8 +46,8 @@ class Geometry():
 
     @staticmethod
     def coords_from_index(num, level=0):
-        return (glm.vec3(num) % glm.vec3(2, 4, 8) // glm.vec3(1, 2, 4) * 2**level).to_list() # this needs to be double-checked. I'm not sure about the order
-
+        return (glm.vec3(num) % glm.vec3(2, 4, 8) // glm.vec3(1, 2, 4) * 2**level).to_list()
+        
     @staticmethod
     def coord_addition(coord1, coord2):
         return (glm.vec3(coord1) + glm.vec3(coord2)).to_list()
