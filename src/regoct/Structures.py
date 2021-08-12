@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import warnings
 from typing import final
 from contextlib import contextmanager
+import tqdm
 
 class _OctreeInternal:
     def __init__(self, level, pos, master):
@@ -58,6 +59,11 @@ class Leaf(_OctreeInternal):
     def list_all(self):
         yield {"level":self.level, "pos":self.pos, "type":self.__class__, "data":self.value}
 
+
+    def count(self):
+        return 1
+
+
     # Construction Methods
     def subdivide(self, truncate=False):
         if truncate:
@@ -72,8 +78,8 @@ class Leaf(_OctreeInternal):
         """sets value for leaf"""
         self.value = data
 
-    def defragment(self):
-        pass
+    def defragment(self, counter:tqdm.tqdm):
+        counter.update()
 
     # Spec Methods
     def __eq__(self, other):
@@ -137,7 +143,7 @@ class Node(_OctreeInternal):
                 next_coords = Geometry.coord_mod(coords, 2**self.level)
                 return self.contents[Geometry.index_from_coords(Geometry.coord_div(next_coords, 2**(self.level-1)))].construct(next_coords, level, truncate=truncate)
         else:
-            return self.master.construct(coords, truncate=truncate)
+            return self.master.construct(coords, level, truncate=truncate)
 
     def map(self, coords=[0,0,0]):
         out = []
@@ -151,6 +157,11 @@ class Node(_OctreeInternal):
         for member in self.contents:
             yield from member.list_all()
 
+
+    def count(self):
+        return sum(child.count() for child in self.contents)
+
+
     # Construction Methods
     def replaceslot(self, pos, new):
         self.contents[pos] = new
@@ -162,9 +173,9 @@ class Node(_OctreeInternal):
         self.master.replaceslot(self.pos, Leaf(self.level, self.pos, self.master, data))
         self.destruct()
 
-    def defragment(self):
+    def defragment(self, counter):
         for node in self.contents:
-            node.defragment()
+            node.defragment(counter)
         if all(self.contents[i] == self.contents[(i+1)%8] for i in range(8)):
             self.setleaf(self.contents[0].value)
 
@@ -223,6 +234,11 @@ class Octree:
     def get_octree(self):
         return self.octree
 
+
+    def count(self):
+        return self.octree.count()
+
+
     @contextmanager
     def edit(self):
         try:
@@ -264,7 +280,8 @@ class Octree:
         self.octree.construct(coords, level).setsubtree(src.octree)
 
     def defragment(self):
-        self.octree.defragment()
+        counter = tqdm.tqdm(desc = "defragmentation in progress", total = self.octree.count())
+        self.octree.defragment(counter)
 
     def __str__(self):
         return str(self.octree)

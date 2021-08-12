@@ -205,6 +205,7 @@ class Display:
             return
 
         self.last_time = glfw.get_time()
+        self.last_mouse_x, self.last_mouse_y = None, None
 
         glfw.window_hint(glfw.SAMPLES, 4)
 
@@ -267,6 +268,7 @@ class Display:
         gl.glEnable(gl.GL_POLYGON_OFFSET_FILL)
         gl.glPolygonOffset(1, 0)
         gl.glLineWidth(1)
+        gl.glEnable(gl.GL_LINE_SMOOTH)
         gl.glEnable(gl.GL_BLEND)
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glDepthFunc(gl.GL_LEQUAL)
@@ -390,11 +392,20 @@ class Display:
         if glfw.get_key(self.window, glfw.KEY_S) == glfw.PRESS:
             self.v_angle += (self.delta_time * self.speed) if (self.v_angle < math.pi/2) else 0
 
-        if glfw.get_key(self.window, glfw.KEY_A) == glfw.PRESS:
+        if glfw.get_key(self.window, glfw.KEY_D) == glfw.PRESS:
             self.h_angle += self.delta_time * self.speed
 
-        if glfw.get_key(self.window, glfw.KEY_D) == glfw.PRESS:
+        if glfw.get_key(self.window, glfw.KEY_A) == glfw.PRESS:
             self.h_angle -= self.delta_time * self.speed
+
+        if glfw.get_mouse_button(self.window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:
+            mouse_x, mouse_y = glfw.get_cursor_pos(self.window)
+            if self.last_mouse_x and self.last_mouse_y:
+                self.h_angle += (self.last_mouse_x - mouse_x) / self.window_dims[0] * 4
+                self.v_angle += (self.last_mouse_y - mouse_y) / self.window_dims[1] * 4
+            self.last_mouse_x, self.last_mouse_y = mouse_x, mouse_y
+        elif self.last_mouse_x or self.last_mouse_y:
+            self.last_mouse_x, self.last_mouse_y = None, None
 
         self.direction = glm.vec3(
                             math.cos(self.v_angle) * math.sin(self.h_angle),

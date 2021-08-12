@@ -1,14 +1,20 @@
+from io import BufferedWriter
 from ..Structures import Octree
 from queue import LifoQueue
 from struct import pack
 
-# here octree instances and orc files will be compiled to onc files
+# here octree instances and will be compiled to onc files
 
 def save(octree, file_name):
-    comp = Compiler()
+    """
+    The essential octree saving method.\n
+    Use when the octree contains only contains built-in types, such as int, str, list and set. 
+    """
     with open(file_name, "wb") as io:
+        saver = Saver(io)
         for command in scanner(octree):
-            io.write(comp.translate(command))
+            saver.translate(command)
+
 
 def scanner(octree):
     def process(data):
@@ -20,7 +26,6 @@ def scanner(octree):
         
         yield Command.fill_node(data["data"])
         lastlevel += increment_counter()
-
         
     def increment_counter():
         if counter.empty():
@@ -49,6 +54,7 @@ def scanner(octree):
                 yield command
                 command = nxtcmd
     yield command
+
 
 class Command:
     singletons = {
@@ -95,7 +101,8 @@ class Command:
     def create_node(cls):
         return cls("crnd")
 
-class Compiler:
+
+class Saver:
     conversion = {
         'header':b'\x00', 'seed':b'\x01', 
 
@@ -107,7 +114,7 @@ class Compiler:
          'f32':b'\x28',  'f64':b'\x29',  'c64':b'\x2a', 'c128':b'\x2b', 
          'Str':b'\x40', 'List':b'\x41', 'Dict':b'\x42',  'Set':b'\x43'
     }
-    pystandard = {
+    py_standard = {
         int: "i32", 
         float: "f64",
         complex: "c64",
@@ -117,67 +124,108 @@ class Compiler:
         set: "Set"
     }
 
-    def translate(self, command:Command):
-        return getattr(self, command.cmd)(command)
 
+    def __init__(self, io:BufferedWriter) -> None:
+        self.io = io
+
+
+    def translate(self, command:Command):
+        """Routes the incoming commands that a octree decomposes into towards the individual transcription commands"""
+        getattr(self, command.cmd)(command)
+    
+    
     def convert(self, value):
-        return self.conversion[self.pystandard[type(value)]] + getattr(self, self.pystandard[type(value)])(value)
+        self.io.write(self.conversion[self.py_standard[type(value)]])
+        getattr(self, self.py_standard[type(value)])(value)
+
 
     def header(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.convert(command.value)])
+        self.io.write(self.conversion[command.cmd])
+        self.convert(command.value)
+
     def seed(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.convert(command.value)])
-    
+        self.io.write(self.conversion[command.cmd])
+        self.convert(command.value)
+
+
     def crnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
+        self.io.write(self.conversion[command.cmd])
+        self.u8(command.count)
+
     def flnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.ui8(command.count), command.value])
-
+        self.io.write(self.conversion[command.cmd])
+        self.u8(command.count)
+        self.convert(command.value) # here custom to_file method should be inserted
+    
+    
     def nlnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
+        self.io.write(self.conversion[command.cmd])
+        self.u8(command.count)
+
     def vdnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
+        self.io.write(self.conversion[command.cmd])
+        self.u8(command.count)
+
     def fsnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
+        self.io.write(self.conversion[command.cmd])
+        self.u8(command.count)
+
     def trnd(self, command:Command):
-        return b"".join([self.conversion[command.cmd], self.ui8(command.count)])
+        self.io.write(self.conversion[command.cmd])
+        self.u8(command.count)
+
+
+    def i8(self, value:int):
+        self.io.write(value.to_bytes(1, byteorder="big", signed=True))
+
+    def i16(self, value:int):
+        self.io.write(value.to_bytes(2, byteorder="big", signed=True))
+
+    def i32(self, value:int):
+        self.io.write(value.to_bytes(4, byteorder="big", signed=True))
+
+    def i64(self, value:int):
+        self.io.write(value.to_bytes(8, byteorder="big", signed=True))
+
+    def u8(self, value:int):
+        self.io.write(value.to_bytes(1, byteorder="big", signed=False))
     
-    # data types: return a value
-    # basic data types
-    
-    def i8(self, value):
-        return value.to_bytes(1, byteorder="big", signed=True)
-    def i16(self, value):
-        return value.to_bytes(2, byteorder="big", signed=True)
-    def i32(self, value):
-        return value.to_bytes(4, byteorder="big", signed=True)
-    def i64(self, value):
-        return value.to_bytes(8, byteorder="big", signed=True)
+    def u16(self, value:int):
+        self.io.write(value.to_bytes(2, byteorder="big", signed=False))
 
-    def ui8(self, value):
-        return value.to_bytes(1, byteorder="big", signed=False)
-    def ui16(self, value):
-        return value.to_bytes(2, byteorder="big", signed=False)
-    def ui32(self, value):
-        return value.to_bytes(4, byteorder="big", signed=False)
-    def ui64(self, value):
-        return value.to_bytes(8, byteorder="big", signed=False)
+    def u32(self, value:int):
+        self.io.write(value.to_bytes(4, byteorder="big", signed=False))
 
-    def f32(self, value):
-        return pack("f", value)
-    def f64(self, value):
-        return pack("d", value)
-    def k64(self, value):
-        return pack("ff", value.real, value.imag)
-    def k128(self, value):
-        return pack("dd", value.real, value.imag)
+    def u64(self, value:int):
+        self.io.write(value.to_bytes(8, byteorder="big", signed=False))
 
-    # complex data types: iterated types
+    def f32(self, value:float):
+        self.io.write(pack("f", value))
+
+    def f64(self, value:float):
+        self.io.write(pack("d", value))
+
+    def c64(self, value:complex):
+        self.io.write(pack("ff", value.real, value.imag))
+
+    def c128(self, value:complex):
+        self.io.write(pack("dd", value.real, value.imag))
+
     def Str(self, value:str):
-        return self.ui16(len(value)) + value.encode()
+        self.u16(len(value))
+        self.io.write(value.encode())
+
     def List(self, value:list):
-        return self.ui16(len(value)) + b"".join(self.convert(item) for item in value)
+        self.u16(len(value))
+        for item in value:
+            self.convert(item) 
+
     def Dict(self, value:dict):
-        return self.ui16(len(value)) + b"".join(self.convert(key) + self.convert(value) for key, value in value.items())
+        self.u16(len(value))
+        for key, value in value.items():
+            self.convert(key); self.convert(value) 
+
     def Set(self, value:set):
-        return self.ui16(len(value)) + b"".join(self.convert(item) for item in value)
+        self.u16(len(value))
+        for item in value:
+            self.convert(item) 

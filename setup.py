@@ -6,7 +6,7 @@ desc = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="regOct",
-    version='0.1.0.dev3',
+    version='0.1.0.dev4',
     description="A module implementing octrees for python",
     long_description=desc,
     long_description_content_type='text/markdown',
@@ -31,5 +31,6 @@ setup(
         "keyboard",
         "glfw",
         "PyOpenGL",
+        "tqdm",
     ],
 )
