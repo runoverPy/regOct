@@ -4,6 +4,8 @@ from .Util import Geometry, SubdivisionIndexError, InvalidRequestCallError, Unbo
 from abc import ABC, abstractmethod
 import warnings
 from typing import final
+from contextlib import contextmanager
+import tqdm
 
 class _OctreeInternal:
     def __init__(self, level, pos, master):
@@ -33,7 +35,7 @@ class Leaf(_OctreeInternal):
     # Navigation Methods
     def get(self, coords, minlevel=0, bounded=False):
         if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
-            return self
+            return self.value
         else:
             if bounded:
                 raise Exception
@@ -57,6 +59,11 @@ class Leaf(_OctreeInternal):
     def list_all(self):
         yield {"level":self.level, "pos":self.pos, "type":self.__class__, "data":self.value}
 
+
+    def count(self):
+        return 1
+
+
     # Construction Methods
     def subdivide(self, truncate=False):
         if truncate:
@@ -71,7 +78,16 @@ class Leaf(_OctreeInternal):
         """sets value for leaf"""
         self.value = data
 
+    def defragment(self, counter:tqdm.tqdm):
+        counter.update()
+
     # Spec Methods
+    def __eq__(self, other):
+        if type(self) == type(other):
+            if self.value == other.value:
+                return True
+        return False
+
     def __str__(self):
         return str({"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value})
 
@@ -127,7 +143,7 @@ class Node(_OctreeInternal):
                 next_coords = Geometry.coord_mod(coords, 2**self.level)
                 return self.contents[Geometry.index_from_coords(Geometry.coord_div(next_coords, 2**(self.level-1)))].construct(next_coords, level, truncate=truncate)
         else:
-            return self.master.construct(coords, truncate=truncate)
+            return self.master.construct(coords, level, truncate=truncate)
 
     def map(self, coords=[0,0,0]):
         out = []
@@ -141,6 +157,11 @@ class Node(_OctreeInternal):
         for member in self.contents:
             yield from member.list_all()
 
+
+    def count(self):
+        return sum(child.count() for child in self.contents)
+
+
     # Construction Methods
     def replaceslot(self, pos, new):
         self.contents[pos] = new
@@ -152,7 +173,16 @@ class Node(_OctreeInternal):
         self.master.replaceslot(self.pos, Leaf(self.level, self.pos, self.master, data))
         self.destruct()
 
+    def defragment(self, counter):
+        for node in self.contents:
+            node.defragment(counter)
+        if all(self.contents[i] == self.contents[(i+1)%8] for i in range(8)):
+            self.setleaf(self.contents[0].value)
+
     # Spec Methods
+    def __eq__(self, any):
+        return False
+
     def __str__(self):
         return "\n".join(str(i) for i in self.contents)
 
@@ -172,10 +202,10 @@ class Node(_OctreeInternal):
             out = next(self.reading)
         return out
 
+    def __getitem__(self, key):
+        return self.contents[key] 
+
 class Octree:
-    """The Class with which octrees will be created.
-    It is the Root of the Octree.
-    It acts as a quasi-node, with only one slot"""
     def __init__(self, max_level):
         self.level = max_level
         self.octree = None
@@ -183,12 +213,15 @@ class Octree:
     # Navigation Methods
     def get(self, coords, minlevel=0, bounded=False):
         if self.level > minlevel:
-            return self.octree.get(coords, minlevel, bounded)
+            if any((0 > value or value >= 2**self.level) for value in coords):
+                return None
+            else:
+                return self.octree.get(coords, minlevel, bounded)
         else:
             raise Exception
 
     def construct(self, coords, level, truncate=False):
-        while self.level >= level:
+        while self.level > level:
             self.superset()
         return self.octree.construct(coords, level, truncate=truncate)
 
@@ -197,6 +230,21 @@ class Octree:
 
     def list_all(self):
         return self.octree.list_all()
+
+    def get_octree(self):
+        return self.octree
+
+
+    def count(self):
+        return self.octree.count()
+
+
+    @contextmanager
+    def edit(self):
+        try:
+            yield self
+        finally:
+            self.defragment()
 
     # Construction methods
     @classmethod
@@ -230,6 +278,10 @@ class Octree:
     def setsubtree(self, coords, level, src):
         """Insert a seperate Octree to the designated location"""
         self.octree.construct(coords, level).setsubtree(src.octree)
+
+    def defragment(self):
+        counter = tqdm.tqdm(desc = "defragmentation in progress", total = self.octree.count())
+        self.octree.defragment(counter)
 
     def __str__(self):
         return str(self.octree)
