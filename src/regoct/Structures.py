@@ -1,63 +1,52 @@
-import math, sys, time
-from enum import Enum, auto
-from .Util import Geometry, SubdivisionIndexError, InvalidRequestCallError, UnboundVartagError, AttributeDesynchronisationError, ToasterBathError, root_key, header_key
-from abc import ABC, abstractmethod
-import warnings
-from typing import final
 from contextlib import contextmanager
+from copy import deepcopy
+from warnings import warn
+
 import tqdm
 
+from .Util import Geometry, SubdivisionIndexError
+
 class _OctreeInternal:
-    def __init__(self, level, pos, master):
+    def __init__(self, level):
         self.level = level
-        self.pos = pos
-        self.master = master
         if self.level < 0:
             raise SubdivisionIndexError(self.level)
 
-    def setsubtree(self, src):
-        self.master.replaceslot(self.pos, src.clone(self.level, self.pos, self.master))
-        self.destruct()
+    def setsubtree(self, src:"Leaf | Node"):
+        if src.__class__ == Leaf:
+            self.__class__ = Leaf
+            self.value = deepcopy(src.value)
+        elif src.__class__ == Node:
+            self.__class__ = Node
+            self.contents = list(src.contents[i].clone(self.level-1, self) for i in range(8))
 
-    def destruct(self):...
 
 class Leaf(_OctreeInternal):
-    def __init__(self, level, pos, master, data):
-        super().__init__(level, pos, master)
-        self.setleaf(data)
+    def __init__(self, level, data):
+        super().__init__(level)
+        self.value = data
 
-    def destruct(self):
-        del self.master
 
-    def clone(self, level, pos, master):
-        return Leaf(level, pos, master, self.value)
+    def clone(self):
+        return Leaf(self.level, deepcopy(self.value))
+
 
     # Navigation Methods
-    def get(self, coords, minlevel=0, bounded=False):
-        if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
-            return self.value
+    def get(self, coords):
+        return self.value
+
+
+    def set(self, coords, level) -> "Leaf | Node":
+        if self.level == level:
+            return self
         else:
-            if bounded:
-                raise Exception
-            else:
-                return self.master.get(coords, minlevel)
+            self.subdivide()
+            return self.set(coords, level)
 
-    def construct(self, coords, level, truncate=False):
-        if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
-            if self.level == level:
-                return self
-            else:
-                self.subdivide(truncate)
-                return self.construct(coords, level, truncate=truncate)
-        else:
-            return self.master.construct(coords, truncate=truncate)
 
-    def map(self, coords=[0,0,0]):
-        next_coords = Geometry.coord_addition(Geometry.coords_from_index(self.pos, self.level), coords)
-        return [{"coords":next_coords, "level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}]
-
-    def list_all(self):
-        yield {"level":self.level, "pos":self.pos, "type":self.__class__, "data":self.value}
+    def map(self, coords=[0,0,0], pos=0):
+        next_coords = Geometry.coord_addition(Geometry.coords_from_index(pos, self.level), coords)
+        return [{"coords":next_coords, "level":self.level, "void":bool(self), "data":self.value}]
 
 
     def count(self):
@@ -65,113 +54,118 @@ class Leaf(_OctreeInternal):
 
 
     # Construction Methods
-    def subdivide(self, truncate=False):
-        if truncate:
-            template = None
-        else:
-            template = self.value
-        del self.value
+    def subdivide(self):
         self.__class__ = Node
-        self.contents = list(Leaf(self.level-1, i, self, template) for i in range(8))
+        self.contents = list(Leaf(self.level-1, deepcopy(self.value)) for i in range(8))
+        del self.value
+
 
     def setleaf(self, data):
         """sets value for leaf"""
         self.value = data
 
+
+    def setnode(self, node):
+        if node.__class__ == Leaf:
+            self.value = deepcopy(node.value)
+        elif node.__class__ == Node:
+            self.__class__ = Node
+            self.contents = list(member.clone(self.level-1, self) for member in node.contents)
+            del self.value
+
+
     def defragment(self, counter:tqdm.tqdm):
         counter.update()
 
-    # Spec Methods
-    def __eq__(self, other):
-        if type(self) == type(other):
-            if self.value == other.value:
-                return True
-        return False
 
     def __str__(self):
-        return str({"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value})
+        return str({"level":self.level, "data":str(self.value)})
+
 
     def __bool__(self):
-        return self.value is None or self.value == []
+        return bool(self.value) 
+
 
     def __iter__(self):
         self.has_returned = False
         return self
+
 
     def __next__(self):
         if self.has_returned:
             raise StopIteration
         else:
             self.has_returned = True
-            return {"level":self.level, "pos":self.pos, "type":self.__class__, "void":bool(self), "data":self.value}
+            return {"level":self.level, "void":bool(self), "data":self.value}
+
+
+    def __eq__(self, o: "Leaf") -> bool:
+        return self.__class__ == o.__class__ and self.value == o.value
+
 
 class Node(_OctreeInternal):
-    def __init__(self, level, pos, master, template=None):
-        super().__init__(level, pos, master)
-        self.contents = list(Leaf(level-1, i, self, template) for i in range(8))
+    def __init__(self, level):
+        super().__init__(level)
+        self.contents = list(Leaf(level-1, None) for i in range(8))
 
-    def destruct(self):
-        del self.master
-        for i in self.contents:
-            i.destruct()
-        del self.contents
 
-    def clone(self, level, pos, master):
-        obj = Node(level, pos, master)
-        obj.contents = list(self.contents[i].clone(obj.level-1, i, obj) for i in range(8))
+    def clone(self, level):
+        obj = Node(level)
+        obj.contents = list(member.clone(obj.level-1, obj) for member in self.contents)
         return obj
 
+
     # Navigation Methods
-    def get(self, coords, minlevel=0, bounded=False):
-        if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
-            if self.level > minlevel:
-                next_coords = Geometry.coord_mod(coords, 2**self.level)
-                return self.contents[Geometry.index_from_coords(Geometry.coord_div(next_coords, 2**(self.level-1)))].get(next_coords, minlevel)
-            else:
-                raise Exception
-        else:
-            if bounded:
-                raise Exception 
-            else:
-                return self.master.get(coords, minlevel)
+    def get(self, coords):
+        next_coords = Geometry.coord_mod(coords, 2**self.level)
+        next_index = Geometry.index_from_coords(Geometry.coord_div(next_coords, 2**(self.level-1)))
+        return self.contents[next_index].get(next_coords)
+        
 
-    def construct(self, coords, level, truncate=False):
-        if Geometry.coord_div(coords, 2**self.level) == Geometry.coords_from_index(self.pos) and Geometry.coord_compare_less(coords, 0):
-            if self.level == level:
-                return self
-            else:
-                next_coords = Geometry.coord_mod(coords, 2**self.level)
-                return self.contents[Geometry.index_from_coords(Geometry.coord_div(next_coords, 2**(self.level-1)))].construct(next_coords, level, truncate=truncate)
+    def set(self, coords, level) -> "Leaf | Node":
+        if self.level == level:
+            return self
         else:
-            return self.master.construct(coords, level, truncate=truncate)
+            next_coords = Geometry.coord_mod(coords, 2**self.level)
+            next_index = Geometry.index_from_coords(
+                Geometry.coord_div(
+                    next_coords,
+                    2**(self.level-1)
+                )
+            )
+            return self.contents[next_index].set(next_coords, level)
 
-    def map(self, coords=[0,0,0]):
+
+    def map(self, coords=[0,0,0], pos=0):
         out = []
-        next_coords = Geometry.coord_addition(Geometry.coords_from_index(self.pos, self.level), coords)
-        for i in self.contents:
-            out.extend(i.map(next_coords))
+        next_coords = Geometry.coord_addition(Geometry.coords_from_index(pos, self.level), coords)
+        for pos, item in enumerate(self.contents):
+            out.extend(item.map(next_coords, pos))
         return out
-
-    def list_all(self):
-        yield {"level":self.level, "pos":self.pos, "type":self.__class__}
-        for member in self.contents:
-            yield from member.list_all()
 
 
     def count(self):
         return sum(child.count() for child in self.contents)
 
 
-    # Construction Methods
-    def replaceslot(self, pos, new):
-        self.contents[pos] = new
-
     def subdivide(self):
-        self.contents = list(self.clone(self.level-1, i, self) for i in range(8))
+        self.contents = list(self.clone(self.level-1, self) for _ in range(8))
+
 
     def setleaf(self, data=None):
-        self.master.replaceslot(self.pos, Leaf(self.level, self.pos, self.master, data))
-        self.destruct()
+        self.__class__ = Leaf
+        self.value = data
+        del self.contents
+
+
+    def setnode(self, node):
+        if node.__class__ == Leaf:
+            self.__class__ = Leaf
+            self.value = deepcopy(node.value)
+        elif node.__class__ == Node:
+            self.__class__ = Node
+            self.contents = list(member.clone(self.level-1, self) for member in node.contents)
+
 
     def defragment(self, counter):
         for node in self.contents:
@@ -179,17 +173,16 @@ class Node(_OctreeInternal):
         if all(self.contents[i] == self.contents[(i+1)%8] for i in range(8)):
             self.setleaf(self.contents[0].value)
 
-    # Spec Methods
-    def __eq__(self, any):
-        return False
 
     def __str__(self):
         return "\n".join(str(i) for i in self.contents)
+
 
     def __iter__(self):
         self.n = 0
         self.reading = iter(self.contents[0])
         return self
+
 
     def __next__(self):
         try:
@@ -202,34 +195,38 @@ class Node(_OctreeInternal):
             out = next(self.reading)
         return out
 
+
     def __getitem__(self, key):
         return self.contents[key] 
 
+
+    def __eq__(self, o: "Node"):
+        return self.__class__ == o.__class__ and all(a == b for a, b in zip(self.contents, o.contents))
+
+
 class Octree:
-    def __init__(self, max_level):
-        self.level = max_level
-        self.octree = None
+    def __init__(self, level, data=None):
+        self.level = level
+        self.octree:"Leaf | Node" = Leaf(self.level, data)
+
 
     # Navigation Methods
-    def get(self, coords, minlevel=0, bounded=False):
-        if self.level > minlevel:
-            if any((0 > value or value >= 2**self.level) for value in coords):
-                return None
-            else:
-                return self.octree.get(coords, minlevel, bounded)
+    def get(self, coords):
+        if any((0 > value or value >= 2**self.level) for value in coords):
+            return None
         else:
-            raise Exception
+            return self.octree.get(coords)
 
-    def construct(self, coords, level, truncate=False):
+
+    def set(self, coords, level):
         while self.level > level:
             self.superset()
-        return self.octree.construct(coords, level, truncate=truncate)
+        return self.octree.set(coords, level)
+
 
     def map(self):
         return self.octree.map()
 
-    def list_all(self):
-        return self.octree.list_all()
 
     def get_octree(self):
         return self.octree
@@ -246,67 +243,58 @@ class Octree:
         finally:
             self.defragment()
 
+
     # Construction methods
     @classmethod
     def blank(cls, level, data=None):
-        """Create a blank octree"""
-        obj = cls(level)
-        obj.octree = Leaf(obj.level, 0, obj, data)
+        """Create a blank octree.\n
+        Is functionally equal to simply calling the constructor and will be depricated in the near future."""
+        obj = cls(level, data)
         return obj
+
 
     def subtree(self, coords, level):
         """Clone a seperate subtree to a new object"""
         node = self.get(coords, level)
         obj = Octree(node.level)
-        obj.octree = node.clone(obj.level, 0, obj)
+        obj.octree = node.clone(obj.level, obj)
         return obj
+
 
     def superset(self):
         obj = Node(self.level, 0, self)
-        obj.contents = list(Leaf(obj.level-1, i, obj, None) for i in range(8))
+        obj.contents = list(Leaf(obj.level-1, None) for _ in range(8))
         obj.contents[self.octree.pos] = self.octree
-        self.octree.master = obj
         self.octree = obj
         self.level += 1
 
-    def replaceslot(self, pos, new):
-        self.octree = new
 
-    def setleaf(self, coords, level, data):
-        self.octree.construct(coords, level).setleaf(data)
+    def set(self, coords, level, data):
+        self.octree.set(coords, level).setleaf(data)
+
 
     def setsubtree(self, coords, level, src):
         """Insert a seperate Octree to the designated location"""
-        self.octree.construct(coords, level).setsubtree(src.octree)
+        self.octree.set(coords, level).setsubtree(src.octree)
+
 
     def defragment(self):
         counter = tqdm.tqdm(desc = "defragmentation in progress", total = self.octree.count())
         self.octree.defragment(counter)
 
+
     def __str__(self):
         return str(self.octree)
+
 
     def __iter__(self):
         self.iter = iter(self.octree)
         return self
 
+
     def __next__(self):
         return next(self.iter)
 
-class Addon(ABC):
-    """this class has not been implemented yet. In the future, you will be able to use octree addons for automating tasks. probably."""
     
-    def __init__(self):
-        self.card = "addon_base"
-
-    @final
-    @classmethod
-    def bind(cls, bind_to):
-        """The method called to bind a Addon to an octree"""
-        obj = cls()
-        setattr(bind_to, obj.card, obj)
-        obj.node = bind_to
-
-    @final
-    def get(self, coords4):
-        return self.node.get(coords4).__dict__[self.card]
+    def __eq__(self, o: "Octree") -> bool:
+        return self.__class__ == o.__class__ and self.octree == o.octree

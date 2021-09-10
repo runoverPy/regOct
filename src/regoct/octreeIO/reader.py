@@ -1,23 +1,9 @@
 from io import BufferedReader
-from queue import Queue
 from struct import unpack
-from typing import ContextManager
+from copy import deepcopy
 from contextlib import contextmanager
 
 from ..Structures import Octree, Node, Leaf
-
-
-def load(file_name):
-    """
-    The essential octree loading method.\n
-    Use when the octree contains only contains built-in types, such as int, str, list and set.     
-    """
-    with open(file_name, "rb") as io:
-        build_help = BuilderHelper()
-        with build_help.build():
-            for command in  Loader(io):
-                build_help.route(command)
-        return build_help.octree        
 
 
 class Command:
@@ -34,10 +20,8 @@ class Command:
 
 
 class Builder:
-    def __init__(self, level, pos, master):
+    def __init__(self, level):
         self.level = level
-        self.pos = pos
-        self.master = master
         self.creating_index = 0
         self.end_of_line = True
         self.artefact:"list[Builder]" = []
@@ -46,7 +30,7 @@ class Builder:
         if self.end_of_line == False:
             self.artefact[self.creating_index].crnd()
         else:
-            self.artefact.append(Builder(self.level -1, self.creating_index, self))
+            self.artefact.append(Builder(self.level-1))
             self.end_of_line = False
 
     def flnd(self, data):
@@ -55,7 +39,7 @@ class Builder:
                 self.creating_index += 1
                 self.end_of_line = True
         else:
-            self.artefact.append(Leaf(self.level -1, self.creating_index, self, data))
+            self.artefact.append(Leaf(self.level -1, data))
             self.creating_index += 1
         
         if self.creating_index == 8:
@@ -85,12 +69,12 @@ class BuilderHelper(Builder):
 
     def seed(self, value):
         self.octree = Octree(value)
-        super().__init__(self.octree.level+1, 0, None)
+        super().__init__(self.octree.level+1)
 
 
     def route(self, command:Command):
         for _ in range(command.count):
-            getattr(self, command.command)(command.value)
+            getattr(self, command.command)(deepcopy(command.value))
 
 
     @contextmanager
@@ -101,12 +85,7 @@ class BuilderHelper(Builder):
             self.octree.octree = self.artefact[0]
 
 
-    def unfold(self):
-        for _ in range(self.count):
-            yield Command(name=self.command, value=self.value)
-
-
-class Loader:
+class LoadingStream:
     commands = {
         b"\x00":"header", b"\x01":"seed",
         
@@ -124,49 +103,19 @@ class Loader:
         self.io = io
 
 
-    def __iter__(self):
-        return self
-
-
-    def __next__(self):
-        if (next_byte := self.io.read(1)):
-            return getattr(self, self.commands[next_byte])()
-        else:
-            raise StopIteration
-
-
     def get_next(self):
         if (next_byte := self.io.read(1)):
             return getattr(self, self.commands[next_byte])()
         else:
-            raise StopIteration
+            raise EOFError
 
 
-    def header(self):
-        return Command("header", value=self.get_next())
-    
-    def seed(self):
-        return Command("seed", value=self.get_next())
-    
-    def crnd(self):
-        return Command("crnd", self.u8())
+    def read(self) -> bytes:
+        if (next_byte := self.io.read(1)):
+            return next_byte
+        else:
+            raise EOFError
 
-    def flnd(self):
-        return Command("flnd", self.u8(), self.get_next()) # here custom from_file method should be inserted
-
-        
-    def nlnd(self):
-        return Command("flnd", self.u8())
-
-    def vdnd(self):
-        return Command("flnd", self.u8(), value=Ellipsis)
-
-    def fsnd(self):
-        return Command("flnd", self.u8(), value=False)
-
-    def trnd(self):
-        return Command("flnd", self.u8(), value=True)
-        
 
     def i8(self):
         return int.from_bytes(self.io.read(1), byteorder="big", signed=True)
@@ -215,3 +164,54 @@ class Loader:
 
     def Set(self):
         return set(self.get_next() for _ in range(self.u16()))
+
+
+class Loader:
+    commands = {
+        b"\x00":"header", b"\x01":"seed",
+        
+        b"\x04":"crnd", b"\x07":"flnd", 
+        b"\x08":"nlnd", b"\x09":"vdnd", b"\x0a":"fsnd", b"\x0b":"trnd",
+    }
+
+
+    def __init__(self, io:BufferedReader, factory) -> None:
+        self.factory = factory
+        self.converter = LoadingStream(io)
+
+
+    def __iter__(self):
+        return self
+
+
+    def __next__(self):
+        try:
+            return getattr(self, self.commands[self.converter.read()])()
+        except EOFError:
+            raise StopIteration
+
+
+    def header(self):
+        return Command("header", value=self.converter.get_next())
+    
+    def seed(self):
+        return Command("seed", value=self.converter.get_next())
+    
+    def crnd(self):
+        return Command("crnd", self.converter.u8())
+
+    def flnd(self):
+        return Command("flnd", self.converter.u8(), self.factory.from_file(self.factory, self.converter)) # here custom from_file method should be inserted
+
+        
+    def nlnd(self):
+        return Command("flnd", self.converter.u8())
+
+    def vdnd(self):
+        return Command("flnd", self.converter.u8(), value=Ellipsis)
+
+    def fsnd(self):
+        return Command("flnd", self.converter.u8(), value=False)
+
+    def trnd(self):
+        return Command("flnd", self.converter.u8(), value=True)

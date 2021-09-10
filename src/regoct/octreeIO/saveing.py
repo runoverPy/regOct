@@ -1,19 +1,7 @@
 from io import BufferedWriter
-from ..Structures import Octree
 from queue import LifoQueue
 from struct import pack
-
-# here octree instances and will be compiled to onc files
-
-def save(octree, file_name):
-    """
-    The essential octree saving method.\n
-    Use when the octree contains only contains built-in types, such as int, str, list and set. 
-    """
-    with open(file_name, "wb") as io:
-        saver = Saver(io)
-        for command in scanner(octree):
-            saver.translate(command)
+  
 
 
 def scanner(octree):
@@ -102,16 +90,12 @@ class Command:
         return cls("crnd")
 
 
-class Saver:
-    conversion = {
-        'header':b'\x00', 'seed':b'\x01', 
-
-        'crnd':b'\x04', 'flnd':b'\x07', 
-        'nlnd':b'\x08', 'vdnd':b'\x09', 'fsnd':b'\x0a', 'trnd':b'\x0b', 
-
+class SavingStream:
+    types = {
           'i8':b'\x20',  'i16':b'\x21',  'i32':b'\x22',  'i64':b'\x23', 
-         'ui8':b'\x24', 'ui16':b'\x25', 'ui32':b'\x26', 'ui64':b"\x27", 
+          'u8':b'\x24',  'u16':b'\x25',  'u32':b'\x26',  'u64':b"\x27", 
          'f32':b'\x28',  'f64':b'\x29',  'c64':b'\x2a', 'c128':b'\x2b', 
+        "flse":b"\x2c", "true":b"\x2d", 
          'Str':b'\x40', 'List':b'\x41', 'Dict':b'\x42',  'Set':b'\x43'
     }
     py_standard = {
@@ -124,55 +108,19 @@ class Saver:
         set: "Set"
     }
 
-
+    
     def __init__(self, io:BufferedWriter) -> None:
         self.io = io
 
 
-    def translate(self, command:Command):
-        """Routes the incoming commands that a octree decomposes into towards the individual transcription commands"""
-        getattr(self, command.cmd)(command)
-    
-    
     def convert(self, value):
-        self.io.write(self.conversion[self.py_standard[type(value)]])
-        getattr(self, self.py_standard[type(value)])(value)
+        type_byte = self.py_standard[type(value)]
+        self.io.write(self.types[type_byte])
+        getattr(self, type_byte)(value)
 
 
-    def header(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.convert(command.value)
-
-    def seed(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.convert(command.value)
-
-
-    def crnd(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.u8(command.count)
-
-    def flnd(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.u8(command.count)
-        self.convert(command.value) # here custom to_file method should be inserted
-    
-    
-    def nlnd(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.u8(command.count)
-
-    def vdnd(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.u8(command.count)
-
-    def fsnd(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.u8(command.count)
-
-    def trnd(self, command:Command):
-        self.io.write(self.conversion[command.cmd])
-        self.u8(command.count)
+    def write(self, value:bytes):
+        self.io.write(value)
 
 
     def i8(self, value:int):
@@ -229,3 +177,58 @@ class Saver:
         self.u16(len(value))
         for item in value:
             self.convert(item) 
+
+
+class Saver:
+    conversion = {
+        'header':b'\x00', 'seed':b'\x01', 
+
+        'crnd':b'\x04', 'flnd':b'\x07', 
+        'nlnd':b'\x08', 'vdnd':b'\x09', 'fsnd':b'\x0a', 'trnd':b'\x0b', 
+    }
+
+
+    def __init__(self, io:BufferedWriter, factory) -> None:
+        self.factory = factory
+        self.converter = SavingStream(io)
+
+
+    def translate(self, command:Command):
+        """Routes the incoming commands that a octree decomposes into towards the individual transcription commands"""
+        getattr(self, command.cmd)(command)
+    
+
+    def header(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.convert(command.value)
+
+    def seed(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.convert(command.value)
+
+    def crnd(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.u8(command.count)
+
+    def flnd(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.u8(command.count)
+        self.factory.to_file(command.value, self.converter)
+    
+    def nlnd(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.u8(command.count)
+
+    def vdnd(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.u8(command.count)
+
+    def fsnd(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.u8(command.count)
+
+    def trnd(self, command:Command):
+        self.converter.write(self.conversion[command.cmd])
+        self.converter.u8(command.count)
+
+

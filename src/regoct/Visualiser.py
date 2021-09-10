@@ -279,7 +279,7 @@ class Display:
         tmp = self.octree.map()
         matricies = []
         for line in tmp:
-            if not line["void"]:
+            if line["void"]:
                 matricies.append(glm.translate(glm.mat4(1), glm.vec3(line["coords"])) * glm.scale(glm.mat4(1), glm.vec3(2**line["level"])))
         
         self.cube_count = len(matricies)

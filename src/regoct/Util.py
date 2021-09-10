@@ -1,9 +1,5 @@
 import glm
 
-class ToasterBathError(Exception):
-    def __init__(self):
-        self.message = "\nA terminally fatal error has ocurred during execution. \nPlease start an issue on github and submit the entire traceback.\n(paths containing compromising information should be removed)"
-        super().__init__(self.message)
 
 class SubdivisionIndexError(Exception):
     def __init__(self, value):
@@ -13,6 +9,7 @@ class SubdivisionIndexError(Exception):
 
     def __str__(self):
         return f'{self.message}: {self.value}'
+
 
 class InvalidRequestCallError(Exception):
     def __init__(self, called_by, request):
@@ -24,15 +21,12 @@ class InvalidRequestCallError(Exception):
     def __str__(self):
         return f'{self.called_by} {self.message}: {self.request}'
 
+
 class AttributeDesynchronisationError(Exception):
     def __init__(self):
         self.message = "File data incompatible with given attribute layout"
         super().__init__(self.message)
 
-class UnboundVartagError(Exception):
-    def __init__(self, vartag, data):
-        self.message = f"Vartag {vartag} not found in data {data.keys()}"
-        super().__init__(self.message)
 
 class Geometry():
     @staticmethod
