@@ -276,9 +276,8 @@ class Display:
 
 
     def poll_octree_data(self):
-        tmp = self.octree.map()
         matricies = []
-        for line in tmp:
+        for line in self.octree:
             if line["void"]:
                 matricies.append(glm.translate(glm.mat4(1), glm.vec3(line["coords"])) * glm.scale(glm.mat4(1), glm.vec3(2**line["level"])))
         
