@@ -3,7 +3,7 @@ from struct import unpack
 from copy import deepcopy
 from contextlib import contextmanager
 
-from ..Structures import Octree, Node, Leaf
+from .Structures import Octree, Node, Leaf
 
 
 class Command:
@@ -69,7 +69,7 @@ class BuilderHelper(Builder):
 
     def seed(self, value):
         self.octree = Octree(value)
-        super().__init__(self.octree.level+1)
+        super().__init__(value + 1)
 
 
     def route(self, command:Command):
@@ -103,12 +103,9 @@ class LoadingStream:
         self.io = io
 
 
-    def get_next(self):
-        if (next_byte := self.io.read(1)):
-            return getattr(self, self.commands[next_byte])()
-        else:
-            raise EOFError
-
+    def convert(self):
+        return getattr(self, self.commands[self.read()])()
+        
 
     def read(self) -> bytes:
         if (next_byte := self.io.read(1)):
@@ -157,13 +154,13 @@ class LoadingStream:
         return self.io.read(self.u16()).decode()
 
     def List(self):
-        return list(self.get_next() for _ in range(self.u16()))
+        return list(self.convert() for _ in range(self.u16()))
 
     def Dict(self):
-        return dict((self.get_next(), self.get_next()) for _ in range(self.u16()))
+        return dict((self.convert(), self.convert()) for _ in range(self.u16()))
 
     def Set(self):
-        return set(self.get_next() for _ in range(self.u16()))
+        return set(self.convert() for _ in range(self.u16()))
 
 
 class Loader:
@@ -192,10 +189,10 @@ class Loader:
 
 
     def header(self):
-        return Command("header", value=self.converter.get_next())
+        return Command("header", value=self.converter.convert())
     
     def seed(self):
-        return Command("seed", value=self.converter.get_next())
+        return Command("seed", value=self.converter.convert())
     
     def crnd(self):
         return Command("crnd", self.converter.u8())

@@ -1,8 +1,7 @@
 import abc
 from typing import final
-from queue import LifoQueue
 
-from ..Structures import Octree
+from .Structures import Octree
 from .reader import Loader, LoadingStream, BuilderHelper
 from .saveing import Saver, SavingStream, scanner
 

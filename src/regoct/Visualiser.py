@@ -183,10 +183,10 @@ class Display:
         self.octree = octree
         self.window_dims = [1280, 960]
         
-        self.fulcrum = glm.vec3(2**(octree.level-1))  # orbit center of camera
+        self.fulcrum = glm.vec3(2**(octree.octree.level-1))  # orbit center of camera
         self.direction = glm.vec3(0)
         self.position = glm.vec3(0)
-        self.dist = 2**(octree.level+1)
+        self.dist = 2**(octree.octree.level+1)
         self.barrier = 0
         
         self.h_angle = math.pi/4

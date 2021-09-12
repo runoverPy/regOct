@@ -6,7 +6,7 @@ desc = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="regOct",
-    version='1.0.0',
+    version='1.1.0',
     description="A module implementing octrees for python",
     long_description=desc,
     long_description_content_type='text/markdown',

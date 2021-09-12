@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from copy import deepcopy
+import math
 
 from .Util import Geometry
 
@@ -12,7 +13,7 @@ class Leaf:
             raise ValueError(self.level)
 
 
-    def clone(self):
+    def clone(self, level):
         return Leaf(self.level, deepcopy(self.value))
 
 
@@ -44,7 +45,7 @@ class Leaf:
             self.value = deepcopy(node.value)
         elif node.__class__ == Node:
             self.__class__ = Node
-            self.contents = list(member.clone(self.level-1, self) for member in node.contents)
+            self.contents = list(member.clone(self.level-1) for member in node.contents)
             del self.value
 
 
@@ -90,7 +91,7 @@ class Node:
 
     def clone(self, level):
         obj = Node(level)
-        obj.contents = list(member.clone(obj.level-1, obj) for member in self.contents)
+        obj.contents = list(member.clone(obj.level-1) for member in self.contents)
         return obj
 
 
@@ -116,7 +117,7 @@ class Node:
 
 
     def subdivide(self):
-        self.contents = list(self.clone(self.level-1, self) for _ in range(8))
+        self.contents = list(self.clone(self.level-1) for _ in range(8))
 
 
     def make_leaf(self, data=None):
@@ -131,7 +132,7 @@ class Node:
             self.value = deepcopy(node.value)
         elif node.__class__ == Node:
             self.__class__ = Node
-            self.contents = list(member.clone(self.level-1, self) for member in node.contents)
+            self.contents = list(member.clone(self.level-1) for member in node.contents)
 
 
     def defragment(self):
@@ -174,8 +175,8 @@ class Node:
 
 class Octree:
     def __init__(self, level, data=None):
+        self.octree:"Leaf | Node" = Leaf(level, data)
         self.level = level
-        self.octree:"Leaf | Node" = Leaf(self.level, data)
 
 
     def _get(self, coords):
@@ -186,15 +187,18 @@ class Octree:
 
 
     def _set(self, coords, level) -> "Leaf | Node":
-        if any(0 > value >= 2**level for value in coords):
+        if any(0 > value >= 2**self.level for value in coords):
+            print("out of range")
             raise IndexError()
-        while self.level < level:
-            self._raise()
         return self.octree.set(coords, level)
 
 
-    def _defragment(self):
-        self.octree.defragment()
+    def _raise(self):
+        print("raising")
+        new_octree = Node(self.level + 1, 0, self)
+        new_octree.contents = list(Leaf(self.level, None) for _ in range(8))
+        new_octree.contents[0] = self.octree
+        self.octree = new_octree
 
 
     @contextmanager
@@ -202,28 +206,20 @@ class Octree:
         try:
             yield self
         finally:
-            self._defragment()
+            self.octree.defragment()
 
     # WIP
     def get_sub_tree(self, coords: "tuple", level) -> "Octree":
         """-WIP- Clone a segment of the octree to a new object"""
-        node = self.octree.set(coords, level)
+        node = self._set(coords, level)
         obj = Octree(node.level)
-        obj.octree = node.clone(obj.level, obj)
+        obj.octree = node.clone(obj.level)
         return obj
 
 
     def set_sub_tree(self, coords: "tuple", level, src: "Octree"):
         """-WIP- Insert a seperate Octree to the designated location"""
         self._set(coords, level).make_node(src.octree)
-
-
-    def _raise(self, target=0):
-        obj = Node(self.level, 0, self)
-        obj.contents = list(Leaf(obj.level-1, None) for _ in range(8))
-        obj.contents[target] = self.octree
-        self.octree = obj
-        self.level += 1
 
 
     # spec methods
