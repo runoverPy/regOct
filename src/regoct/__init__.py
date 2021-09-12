@@ -9,7 +9,7 @@ from .interface import Interface
 
 class _Default(Interface):
     def from_file(cls, loader:LoadingStream):
-        return loader.get_next()
+        return loader.convert()
 
     def to_file(obj, saver:SavingStream):
         saver.convert(obj) 
