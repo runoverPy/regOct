@@ -3,7 +3,7 @@ from struct import unpack
 from copy import deepcopy
 from contextlib import contextmanager
 
-from .Structures import Octree, Node, Leaf
+from .structures import Octree, Node, Leaf
 
 
 class Command:

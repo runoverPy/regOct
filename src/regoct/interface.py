@@ -1,7 +1,7 @@
 import abc
 from typing import final
 
-from .Structures import Octree
+from .structures import Octree
 from .reader import Loader, LoadingStream, BuilderHelper
 from .saveing import Saver, SavingStream, scanner
 

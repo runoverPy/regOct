@@ -1,7 +1,5 @@
-from .Util import *
-from .Structures import Octree, Node, Leaf
-from .Visualiser import Display
-
+from .structures import Octree
+from .visualiser import Display
 from .reader import LoadingStream
 from .saveing import SavingStream
 from .interface import Interface

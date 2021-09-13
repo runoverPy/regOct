@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 import math
 
-from .Util import Geometry
+from .util import Geometry
 
 
 class Leaf:
