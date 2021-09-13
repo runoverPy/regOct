@@ -48,25 +48,25 @@ This is addressed followingly.
 regoct provides a API to modify the serialization process. This is useful for implementing routines for class instances.
 
 The ABC regoct.Interface supplies the tools for implementing the API. It requires the methods `to_file(obj, saver: "regoct.SavingStream")` and `from_file(cls, loader: "regoct.LoadingStream")`, where the params **saver** and **loader** provide access to the data using a set of methods. These methods in loader and saver mirror each other and are as follows:
-regoct.SavingStream | regoct.LoadingStream | description
--|-|-
-saver.convert(value) | loader.convert() -> any | dynamic conversion
-saver.i8(value) | loader.i8() -> int | 8-bit signed integer
-saver.i16(value) | loader.i16() -> int | 16-bit signed integer
-saver.i32(value) | loader.i32() -> int | 32-bit signed integer
-saver.i64(value) | loader.i64() -> int | 64-bit signed integer
-saver.u8(value) | loader.u8() -> int | 8-bit unsigned integer
-saver.u16(value) | loader.u16() -> int | 16-bit unsigned integer
-saver.u32(value) | loader.u32() -> int | 32-bit unsigned integer
-saver.u64(value) | loader.u64() -> int | 64-bit unsigned integer
-saver.f32(value) | loader.f32() -> float | 32-bit float
-saver.f64(value) | loader.f64() -> float | 64-bit float
-saver.c64(value) | loader.c64() -> complex | 2x 32-bit float complex number
-saver.c128(value) | loader.c128() -> complex | 2x 64-bit float complex number
-saver.Str(value) | loader.Str() -> str | variable-length utf-8 string
-saver.List(value) | loader.List() -> list | variable-length dynamic-type list
-saver.Dict(value) | loader.Dict() -> dict | variable-length dynamic-type dict
-saver.Set(value) | loader.Set() -> set | variable-length dynamic-type set
+|regoct.SavingStream | regoct.LoadingStream | description|
+|--------------------|----------------------|-------------|
+| saver.convert(value) | loader.convert() -> any | dynamic conversion |
+| saver.i8(value) | loader.i8() -> int | 8-bit signed integer |
+| saver.i16(value) | loader.i16() -> int | 16-bit signed integer |
+| saver.i32(value) | loader.i32() -> int | 32-bit signed integer |
+| saver.i64(value) | loader.i64() -> int | 64-bit signed integer |
+| saver.u8(value) | loader.u8() -> int | 8-bit unsigned integer | 
+| saver.u16(value) | loader.u16() -> int | 16-bit unsigned integer |
+| saver.u32(value) | loader.u32() -> int | 32-bit unsigned integer |
+| saver.u64(value) | loader.u64() -> int | 64-bit unsigned integer |
+| saver.f32(value) | loader.f32() -> float | 32-bit float |
+| saver.f64(value) | loader.f64() -> float | 64-bit float |
+| saver.c64(value) | loader.c64() -> complex | 2x 32-bit float complex number |
+| saver.c128(value) | loader.c128() -> complex | 2x 64-bit float complex number |
+| saver.Str(value) | loader.Str() -> str | variable-length utf-8 string |
+| saver.List(value) | loader.List() -> list | variable-length dynamic-type list |
+| saver.Dict(value) | loader.Dict() -> dict | variable-length dynamic-type dict | 
+| saver.Set(value) | loader.Set() -> set | variable-length dynamic-type set |
 
 Be aware that the order in which these methods are called in the to_file and from_file methods should be equal to eachother.
 
